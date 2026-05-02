@@ -96,7 +96,7 @@ const main = async () => {
     }
   }
 
-  // Step 1.1: Scaffolding
+  // Step 1.1: Project Generation
   s.start(`Generating project in ${cyan(answers.projectName)}...`)
   fs.mkdirSync(targetDir, { recursive: true })
   await copyTemplateEmpty(sourcePath, targetDir)
@@ -104,12 +104,12 @@ const main = async () => {
 
   // Step 2: Determine feature packs to apply
   let selectedFeatures = []
-  if (answers.scaffold === "recommended") {
+  if (answers.buildMode === "recommended") {
     selectedFeatures = ["router", ...answers.features, "demo-pages"]
     if (templateName === "vue-pwa-template") {
       selectedFeatures.push("tailwind-config")
     }
-  } else if (answers.scaffold === "custom") {
+  } else if (answers.buildMode === "custom") {
     selectedFeatures = ["router", ...answers.features, "demo-pages"]
     if (templateName === "vue-pwa-template") {
       selectedFeatures.push("tailwind-config")

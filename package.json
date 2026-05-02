@@ -1,7 +1,7 @@
 {
   "name": "create-web-stack",
   "version": "1.0.0",
-  "description": "Interactive CLI to scaffold Vue, Lynx and Astro templates",
+  "description": "Interactive CLI to create modern web projects (Vue, Lynx, Astro)",
   "type": "module",
   "bin": {
     "create-web-stack": "index.js"
@@ -9,8 +9,33 @@
   "files": [
     "index.js",
     "src/",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "docs/"
   ],
+  "keywords": [
+    "build-tool",
+    "cli",
+    "web",
+    "vue",
+    "astro",
+    "pwa",
+    "template",
+    "starter"
+  ],
+  "homepage": "https://github.com/davidaganov/create-web-stack",
+  "bugs": {
+    "url": "https://github.com/davidaganov/create-web-stack/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/davidaganov/create-web-stack"
+  },
+  "author": {
+    "name": "David Aganov",
+    "url": "https://github.com/davidaganov"
+  },
+  "license": "MIT",
   "engines": {
     "node": ">=18"
   },

@@ -60,22 +60,22 @@ export const runPrompts = async (_cwd) => {
 
   if (isCancel(projectName)) cancel()
 
-  const scaffold = await select({
-    message: "Scaffold mode:",
+  const buildMode = await select({
+    message: "Project mode:",
     options: [
-      { value: "recommended", label: "recommended — full scaffold with demo pages" },
+      { value: "recommended", label: "recommended — full build with demo pages" },
       { value: "custom", label: "custom — select features manually" },
       { value: "empty", label: "empty — bare minimum (no features)" }
     ]
   })
 
-  if (isCancel(scaffold)) cancel()
+  if (isCancel(buildMode)) cancel()
 
   let features = []
 
-  if (scaffold === "recommended") {
+  if (buildMode === "recommended") {
     features = TEMPLATES[templateName].features.map((f) => f.value)
-  } else if (scaffold === "custom") {
+  } else if (buildMode === "custom") {
     const allFeatures = TEMPLATES[templateName].features
     const selected = await multiselect({
       message: "Select features (space to toggle, enter to confirm):",
@@ -102,7 +102,7 @@ export const runPrompts = async (_cwd) => {
   return {
     templateName,
     projectName,
-    scaffold,
+    buildMode,
     features,
     install
   }
