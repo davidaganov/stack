@@ -1,10 +1,10 @@
-# create-web-stack
+# stack
 
 🇺🇸 [English](../README.md) | 🇷🇺 [Русский](README_RU.md)
 
-[![npm version](https://img.shields.io/npm/v/create-web-stack.svg?style=flat-square)](https://www.npmjs.com/package/create-web-stack)
-[![npm downloads](https://img.shields.io/npm/dm/create-web-stack.svg?style=flat-square)](https://www.npmjs.com/package/create-web-stack)
-[![License: MIT](https://img.shields.io/npm/l/create-web-stack.svg?style=flat-square)](https://github.com/davidaganov/create-web-stack/blob/main/LICENSE)
+[![npm version](https://img.shields.io/npm/v/@davidaganov/stack.svg?style=flat-square)](https://www.npmjs.com/package/@davidaganov/stack)
+[![npm downloads](https://img.shields.io/npm/dm/@davidaganov/stack.svg?style=flat-square)](https://www.npmjs.com/package/@davidaganov/stack)
+[![License: MIT](https://img.shields.io/npm/l/@davidaganov/stack.svg?style=flat-square)](https://github.com/davidaganov/stack/blob/main/LICENSE)
 
 Интерактивный CLI-инструмент для развертывания современных веб-проектов с упором на скорость, структуру и лучшие практики.
 
@@ -27,7 +27,7 @@
 Установка не требуется, просто используйте `npx`:
 
 ```bash
-npx create-web-stack
+npx @davidaganov/stack
 ```
 
 ---
@@ -36,7 +36,7 @@ npx create-web-stack
 
 | Команда                | Описание                                     |
 | :--------------------- | :------------------------------------------- |
-| `npx create-web-stack` | Запустить интерактивный мастер развертывания |
+| `npx @davidaganov/stack` | Запустить интерактивный мастер развертывания |
 
 ---
 

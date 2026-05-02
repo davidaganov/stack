@@ -1,5 +1,5 @@
 {
-  "name": "create-web-stack",
+  "name": "@davidaganov/stack",
   "version": "1.0.0",
   "description": "Interactive CLI to create modern web projects (Vue, Lynx, Astro)",
   "type": "module",
@@ -23,13 +23,13 @@
     "template",
     "starter"
   ],
-  "homepage": "https://github.com/davidaganov/create-web-stack",
+  "homepage": "https://github.com/davidaganov/stack#readme",
   "bugs": {
-    "url": "https://github.com/davidaganov/create-web-stack/issues"
+    "url": "https://github.com/davidaganov/stack/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/davidaganov/create-web-stack"
+    "url": "https://github.com/davidaganov/stack"
   },
   "author": {
     "name": "David Aganov",
