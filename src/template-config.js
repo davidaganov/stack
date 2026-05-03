@@ -19,10 +19,10 @@ export const getOptionalFeatureIds = (templateName) => {
 export const getRecommendedFeatureIds = (templateName) => getOptionalFeatureIds(templateName)
 
 /**
- * Mirrors stack/index.js feature resolution.
+ * Resolves the feature set for a selected template and setup mode.
  * @param {string} templateName
  * @param {"empty"|"recommended"|"custom"} buildMode
- * @param {string[]} optionalFeatures – selected optional modules (Pinia, i18n, …); for `recommended` pass {@link getRecommendedFeatureIds}
+ * @param {string[]} optionalFeatures selected optional modules (Pinia, i18n, etc.)
  */
 export const computeSelectedFeatures = (templateName, buildMode, optionalFeatures) => {
   let selectedFeatures = []

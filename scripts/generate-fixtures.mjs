@@ -35,28 +35,28 @@ const VARIANTS = [
     flags: ["empty"],
     buildMode: "empty",
     optionalFeatures: () => [],
-    blurb: "Only `.webstack/template-empty` — no demo-pages or modules."
+    blurb: "Minimal runnable project without demo pages or optional modules."
   },
   {
     id: "full",
     flags: ["full"],
     buildMode: "recommended",
     optionalFeatures: (t) => getRecommendedFeatureIds(t),
-    blurb: "Recommended preset — all optional modules + demo-pages (+ tailwind for PWA; + platforms when all Lynx modules are on)."
+    blurb: "Recommended preset with demo pages and common optional modules."
   },
   {
     id: "config-all",
     flags: ["config-all"],
     buildMode: "custom",
     optionalFeatures: (t) => getRecommendedFeatureIds(t),
-    blurb: "Custom mode with every optional toggle ON (same feature set as `full`)."
+    blurb: "Custom mode with every optional module enabled."
   },
   {
     id: "config-none",
     flags: ["config-none"],
     buildMode: "custom",
     optionalFeatures: () => [],
-    blurb: "Custom mode with zero optional modules — still gets demo-pages (+ tailwind for PWA)."
+    blurb: "Custom mode with demo pages and no optional modules."
   },
   {
     id: "config-i18n",
