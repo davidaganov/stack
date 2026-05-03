@@ -1,29 +1,7 @@
 import { isCancel, multiselect, select, text } from "@clack/prompts"
 import { red } from "kolorist"
 
-const TEMPLATES = {
-  "vue-pwa-template": {
-    label: "Vue PWA Template",
-    features: [
-      { value: "pinia", label: "Pinia" },
-      { value: "i18n", label: "i18n (vue-i18n + polyglot-keeper)" },
-      { value: "tests", label: "Unit Tests (vitest)" }
-    ]
-  },
-  "vue-lynx-template": {
-    label: "Vue Lynx Template",
-    features: [
-      { value: "router", label: "Vue Router" },
-      { value: "pinia", label: "Pinia" },
-      { value: "i18n", label: "i18n (custom + polyglot-keeper)" },
-      { value: "tests", label: "Unit Tests (vitest)" }
-    ]
-  },
-  "astro-clean-template": {
-    label: "Astro Clean Template",
-    features: [{ value: "i18n", label: "i18n (@mannisto/astro-i18n)" }]
-  }
-}
+import { TEMPLATES, getRecommendedFeatureIds } from "./template-config.js"
 
 /**
  * Handle CLI cancellation
@@ -74,13 +52,13 @@ export const runPrompts = async (_cwd) => {
   let features = []
 
   if (buildMode === "recommended") {
-    features = TEMPLATES[templateName].features.map((f) => f.value)
+    features = getRecommendedFeatureIds(templateName)
   } else if (buildMode === "custom") {
     const allFeatures = TEMPLATES[templateName].features
     const selected = await multiselect({
       message: "Select features (space to toggle, enter to confirm):",
       options: allFeatures.map((f) => ({ value: f.value, label: f.label })),
-      initialValues: allFeatures.map((f) => f.value),
+      initialValues: [],
       required: false
     })
 

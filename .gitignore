@@ -1,5 +1,7 @@
 node_modules
 dist
+.stack-gen
+.tmp-stack-src-*
 test-output
 *.log
 .DS_Store

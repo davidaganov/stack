@@ -1,0 +1,22 @@
+{
+  "vue-pwa-template": {
+    "label": "Vue PWA Template",
+    "features": [
+      { "value": "pinia", "label": "Pinia" },
+      { "value": "i18n", "label": "i18n (vue-i18n + polyglot-keeper)" },
+      { "value": "tests", "label": "Unit Tests (vitest)" }
+    ]
+  },
+  "vue-lynx-template": {
+    "label": "Vue Lynx Template",
+    "features": [
+      { "value": "pinia", "label": "Pinia" },
+      { "value": "i18n", "label": "i18n (custom + polyglot-keeper)" },
+      { "value": "tests", "label": "Unit Tests (vitest)" }
+    ]
+  },
+  "astro-clean-template": {
+    "label": "Astro Clean Template",
+    "features": [{ "value": "i18n", "label": "i18n (@mannisto/astro-i18n)" }]
+  }
+}

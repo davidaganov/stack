@@ -10,13 +10,12 @@ export const resolveFeatures = (selectedFeatures, featuresDir) => {
   const add = (feature) => {
     if (resolved.has(feature)) return
     const patchPath = path.join(featuresDir, feature, "patch.json")
-    if (!fs.existsSync(patchPath)) return
-    const patch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
-
-    for (const dep of patch.requires || []) {
-      add(dep)
+    if (fs.existsSync(patchPath)) {
+      const patch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
+      for (const dep of patch.requires || []) {
+        add(dep)
+      }
     }
-
     resolved.add(feature)
   }
 
@@ -58,21 +57,31 @@ export const resolveFeatures = (selectedFeatures, featuresDir) => {
  * Copy files from feature pack to target directory
  */
 export const copyFeatureFiles = async (feature, featuresDir, targetDir) => {
-  const patchPath = path.join(featuresDir, feature, "patch.json")
-  if (!fs.existsSync(patchPath)) return
-  const patch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
-  const files = patch.copy || []
+  const featurePath = path.join(featuresDir, feature)
+  const srcPath = path.join(featurePath, "src")
 
-  for (const file of files) {
-    const src = path.join(featuresDir, feature, file)
-    const dest = path.join(targetDir, file)
-    if (!fs.existsSync(src)) continue
-    fs.mkdirSync(path.dirname(dest), { recursive: true })
-    const stat = fs.statSync(src)
-    if (stat.isDirectory()) {
-      copyDir(src, dest)
-    } else {
-      fs.copyFileSync(src, dest)
+  // 1. Auto-copy 'src' folder if exists
+  if (fs.existsSync(srcPath)) {
+    copyDir(srcPath, path.join(targetDir, "src"))
+  }
+
+  // 2. Copy specific files from patch.json if exists
+  const patchPath = path.join(featurePath, "patch.json")
+  if (fs.existsSync(patchPath)) {
+    const patch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
+    const files = patch.copy || []
+
+    for (const file of files) {
+      const src = path.join(featurePath, file)
+      const dest = path.join(targetDir, file)
+      if (!fs.existsSync(src)) continue
+      fs.mkdirSync(path.dirname(dest), { recursive: true })
+      const stat = fs.statSync(src)
+      if (stat.isDirectory()) {
+        copyDir(src, dest)
+      } else {
+        fs.copyFileSync(src, dest)
+      }
     }
   }
 }
@@ -104,11 +113,20 @@ export const applyFeaturePatches = (feature, featuresDir, targetDir) => {
   if (!fs.existsSync(patchPath)) return
   const patch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
   const patches = patch.patches || []
+  const filesToRemove = patch.remove || []
+
+  // Handle file removals
+  for (const file of filesToRemove) {
+    const filePath = path.join(targetDir, file)
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
+    }
+  }
 
   for (const p of patches) {
     const filePath = path.join(targetDir, p.file)
     if (!fs.existsSync(filePath)) {
-      console.warn(`  Skip patch: ${p.file} not found`)
+      if (!p.optional) console.warn(`  Skip patch: ${p.file} not found`)
       continue
     }
 
@@ -117,28 +135,41 @@ export const applyFeaturePatches = (feature, featuresDir, targetDir) => {
       continue
     }
 
-    if (p.action === "replace-marker") {
-      let content = fs.readFileSync(filePath, "utf-8")
-      content = content.replace(/\r\n/g, "\n")
-      const replacement = p.lines ? p.lines.join("\n") : p.content
-      content = content.replace(p.marker, replacement)
-      fs.writeFileSync(filePath, content, "utf-8")
+    let content = fs.readFileSync(filePath, "utf-8")
+    content = content.replace(/\r\n/g, "\n")
+    const marker = p.marker || p.target
+    const replacement = p.content || (p.lines ? p.lines.join("\n") : "")
+
+    if (!content.includes(marker)) {
+      if (!p.optional) console.warn(`  Marker not found in ${p.file}: "${marker}"`)
       continue
     }
 
-    if (p.action === "insert-before-marker") {
-      let content = fs.readFileSync(filePath, "utf-8")
-      content = content.replace(/\r\n/g, "\n")
+    if (p.action === "replace-marker" || p.action === "replace") {
+      content = content.replace(marker, replacement)
+    } else if (p.action === "insert-before-marker" || p.action === "insert-before") {
+      content = content.replace(marker, replacement + "\n" + marker)
+    } else if (p.action === "insert-after-marker" || p.action === "insert-after") {
+      content = content.replace(marker, marker + "\n" + replacement)
+    }
 
-      if (!content.includes(p.marker)) {
-        console.warn(`  Marker not found in ${p.file}: "${p.marker}"`)
-        continue
-      }
+    fs.writeFileSync(filePath, content, "utf-8")
+  }
+}
 
-      const lines = p.lines.join("\n")
-      content = content.replace(p.marker, lines + "\n" + p.marker)
-      fs.writeFileSync(filePath, content, "utf-8")
-      continue
+/**
+ * Remove files specified by a feature pack from target directory
+ */
+export const removeFeatureFiles = (feature, featuresDir, targetDir) => {
+  const patchPath = path.join(featuresDir, feature, "patch.json")
+  if (!fs.existsSync(patchPath)) return
+  const patch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
+  const files = patch.remove || []
+
+  for (const file of files) {
+    const targetPath = path.join(targetDir, file)
+    if (fs.existsSync(targetPath)) {
+      fs.rmSync(targetPath, { recursive: true, force: true })
     }
   }
 }
@@ -149,6 +180,7 @@ export const applyFeaturePatches = (feature, featuresDir, targetDir) => {
 export const cleanupMarkers = (targetDir) => {
   const markerRegex = /\/\/\s*@webstack:[^\n]*/g
   const htmlMarkerRegex = /<!--\s*@webstack:[^\n]*-->/g
+  const cssMarkerRegex = /\/\*\s*@webstack:[^*]*\*\//g
 
   const processFile = (filePath) => {
     if (!fs.existsSync(filePath)) return
@@ -162,12 +194,13 @@ export const cleanupMarkers = (targetDir) => {
     }
 
     const ext = path.extname(filePath)
-    if (![".ts", ".js", ".vue", ".json", ".html", ".css"].includes(ext)) return
+    if (![".ts", ".js", ".vue", ".json", ".html", ".css", ".astro"].includes(ext)) return
 
     let content = fs.readFileSync(filePath, "utf-8")
     content = content.replace(/\r\n/g, "\n")
     content = content.replace(markerRegex, "")
     content = content.replace(htmlMarkerRegex, "")
+    content = content.replace(cssMarkerRegex, "")
 
     // Collapse multiple newlines (3 or more) to 2
     content = content.replace(/\n{3,}/g, "\n\n")
@@ -224,6 +257,7 @@ export const applyFeatures = async (selectedFeatures, featuresDir, targetDir) =>
 
   for (const feature of features) {
     await copyFeatureFiles(feature, featuresDir, targetDir)
+    removeFeatureFiles(feature, featuresDir, targetDir)
   }
 
   for (const feature of features) {
