@@ -1,7 +1,7 @@
 {
   "name": "@davidaganov/stack",
-  "version": "1.0.1",
-  "description": "Interactive CLI to create modern web projects (Vue, Lynx, Astro)",
+  "version": "1.0.2",
+  "description": "Interactive CLI to create modern web projects",
   "type": "module",
   "bin": {
     "stack": "index.js"
