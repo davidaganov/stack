@@ -13,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
  * Main execution flow
  */
 const main = async () => {
-  const ART = ["  █▀▀ █▀█ █▀▀ ▄▀█ ▀█▀ █▀▀", "  █▄▄ █▀▄ ██▄ █▀█  █  ██▄"]
+  const ART = ["█▀▀ ▀█▀ ▄▀█ █▀▀ █▄▀", "▄▄█  █  █▀█ █▄▄ █ █"]
 
   const banner = [
     "",
