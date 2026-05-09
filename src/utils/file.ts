@@ -6,7 +6,7 @@ const EXCLUDED_DIRS = ["node_modules", ".git", "dist", "coverage", ".tmp-create-
 /**
  * Recursively copy files and directories, excluding common meta folders
  */
-export const copy = async (src, dest) => {
+export const copy = async (src: string, dest: string): Promise<void> => {
   const stat = fs.statSync(src)
 
   if (stat.isDirectory()) {
@@ -23,7 +23,7 @@ export const copy = async (src, dest) => {
 /**
  * Safely remove a directory
  */
-export const removeDir = (dir) => {
+export const removeDir = (dir: string): void => {
   if (fs.existsSync(dir)) {
     fs.rmSync(dir, { recursive: true, force: true })
   }
@@ -32,7 +32,7 @@ export const removeDir = (dir) => {
 /**
  * Safely remove a file
  */
-export const removeFile = (file) => {
+export const removeFile = (file: string): void => {
   if (fs.existsSync(file)) {
     fs.unlinkSync(file)
   }
@@ -41,7 +41,7 @@ export const removeFile = (file) => {
 /**
  * Read, transform, and write file content
  */
-export const replaceFileContent = (file, replacer) => {
+export const replaceFileContent = (file: string, replacer: (content: string) => string): void => {
   if (!fs.existsSync(file)) return
   const content = fs.readFileSync(file, "utf-8")
   const newContent = replacer(content)

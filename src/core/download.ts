@@ -1,12 +1,17 @@
-import { copy } from "./utils/file.js"
 import { execSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { copy } from "@/utils"
+import type { BuildMode } from "@/types"
 
 /**
  * Clone template from GitHub and copy to target directory
  */
-export const downloadTemplate = async (repoUrl, targetDir, buildMode) => {
+export const downloadTemplate = async (
+  repoUrl: string,
+  targetDir: string,
+  buildMode: BuildMode
+): Promise<void> => {
   const tmpDir = fs.mkdtempSync(path.join(targetDir, "..", ".tmp-create-aganov-"))
 
   try {

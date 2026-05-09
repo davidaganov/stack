@@ -13,7 +13,6 @@
  *
  * Exits with code 1 if file lists or normalized contents differ (after ignoring paths).
  */
-
 import fs from "node:fs"
 import path from "node:path"
 import minimist from "minimist"

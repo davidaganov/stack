@@ -4,12 +4,10 @@
   "description": "Interactive CLI to create modern web projects",
   "type": "module",
   "bin": {
-    "stack": "index.js"
+    "stack": "dist/index.js"
   },
   "files": [
-    "index.js",
-    "src/",
-    "scripts/",
+    "dist/",
     "README.md",
     "GUIDLINE.md",
     "LICENSE"
@@ -41,15 +39,22 @@
     "node": ">=18"
   },
   "scripts": {
-    "help": "node scripts/print-help.mjs",
+    "dev": "tsx index.ts",
+    "build": "tsup index.ts --format esm --clean --minify --dts && node -e \"fs.copyFileSync('src/config/templates.json', 'dist/templates.json')\"",
+    "help": "tsx scripts/print-help.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "parity": "node scripts/webstack-parity.mjs",
-    "gen:all": "node scripts/generate-fixtures.mjs --all",
-    "gen:pwa": "node scripts/generate-fixtures.mjs --template vue-pwa-template",
-    "gen:lynx": "node scripts/generate-fixtures.mjs --template vue-lynx-template",
-    "gen:astro": "node scripts/generate-fixtures.mjs --template astro-clean-template"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "parity": "tsx scripts/webstack-parity.mjs",
+    "gen:all": "tsx scripts/generate-fixtures.mjs --all",
+    "gen:vue-pwa": "tsx scripts/generate-fixtures.mjs --template vue-pwa-template",
+    "gen:vue-modern": "tsx scripts/generate-fixtures.mjs --template vue-modern-template",
+    "gen:vue-lynx": "tsx scripts/generate-fixtures.mjs --template vue-lynx-template",
+    "gen:astro": "tsx scripts/generate-fixtures.mjs --template astro-clean-template"
   },
   "publishConfig": {
     "access": "public"
@@ -61,8 +66,19 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@trivago/prettier-plugin-sort-imports": "^6.0.2",
+    "@types/node": "^22.13.10",
+    "@vitest/coverage-v8": "^3.0.8",
     "eslint": "^10.3.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
     "globals": "^17.6.0",
-    "prettier": "^3.8.3"
+    "jiti": "^2.7.0",
+    "prettier": "^3.8.3",
+    "tsup": "^8.4.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.26.1",
+    "vitest": "^3.0.8"
   }
 }

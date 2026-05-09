@@ -6,3 +6,5 @@ test-output
 *.log
 .DS_Store
 .env
+.lean-ctx
+coverage

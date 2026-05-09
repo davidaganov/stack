@@ -35,6 +35,7 @@ If you skipped dependency installation, run `npm install` first.
 
 - **Vue PWA**: Vue application starter with PWA-oriented setup.
 - **Vue Lynx**: Vue starter for Lynx projects.
+- **Vue Modern**: Vue starter with clean architecture and essential features.
 - **Astro Clean**: Astro starter with a clean baseline.
 
 ## Setup Modes
@@ -42,8 +43,6 @@ If you skipped dependency installation, run `npm install` first.
 - **recommended**: a complete starter with demo pages and common modules enabled.
 - **custom**: choose the modules you want.
 - **empty**: a minimal runnable project.
-
-Available modules depend on the selected template and can include Pinia, i18n, tests, and template-specific config.
 
 ## Requirements
 

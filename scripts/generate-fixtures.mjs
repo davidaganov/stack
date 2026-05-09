@@ -4,21 +4,15 @@
  *
  * See package.json: gen:all, gen:pwa, gen:lynx, gen:astro
  */
-
 import { execSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import minimist from "minimist"
-
-import {
-  listTemplateIds,
-  getRecommendedFeatureIds,
-  TEMPLATES
-} from "../src/template-config.js"
-import { generateProject, resolveTemplateSource } from "../src/generate-project.js"
-import { mergePackageJsonFiles } from "./lib/merge-package-json.mjs"
+import { getRecommendedFeatureIds, listTemplateIds, TEMPLATES } from "../src/config/index.ts"
+import { generateProject, resolveTemplateSource } from "../src/core/index.ts"
 import { linkNodeModules } from "./lib/link-node-modules.mjs"
+import { mergePackageJsonFiles } from "./lib/merge-package-json.mjs"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const STACK_ROOT = path.resolve(__dirname, "..")
@@ -68,7 +62,7 @@ const VARIANTS = [
   {
     id: "config-pinia",
     flags: ["config-pinia"],
-    templates: ["vue-pwa-template", "vue-lynx-template"],
+    templates: ["vue-pwa-template", "vue-lynx-template", "vue-modern-template"],
     buildMode: "custom",
     optionalFeatures: () => ["pinia"],
     blurb: "Custom mode — Pinia only (Vue templates)."
@@ -76,10 +70,18 @@ const VARIANTS = [
   {
     id: "config-tests",
     flags: ["config-tests"],
-    templates: ["vue-pwa-template", "vue-lynx-template"],
+    templates: ["vue-pwa-template", "vue-lynx-template", "vue-modern-template"],
     buildMode: "custom",
     optionalFeatures: () => ["tests"],
     blurb: "Custom mode — Vitest module only (Vue templates)."
+  },
+  {
+    id: "config-tailwind",
+    flags: ["config-tailwind"],
+    templates: ["vue-modern-template", "vue-pwa-template", "vue-lynx-template"],
+    buildMode: "custom",
+    blurb: "Custom mode — Tailwind CSS only (Vue Modern / Vue PWA / Vue Lynx).",
+    optionalFeatures: () => ["tailwind"]
   }
 ]
 
@@ -89,8 +91,9 @@ const variantAppliesToTemplate = (v, templateId) => {
 }
 
 const scriptHintAll = "npm run gen:all"
-const scriptHintPwa = "npm run gen:pwa"
-const scriptHintLynx = "npm run gen:lynx"
+const scriptHintPwa = "npm run gen:vue-pwa"
+const scriptHintModern = "npm run gen:vue-modern"
+const scriptHintLynx = "npm run gen:vue-lynx"
 const scriptHintAstro = "npm run gen:astro"
 
 const printHelpBrief = () => {
@@ -100,12 +103,14 @@ Fixture generator — writes under ${OUT_ROOT}/
 npm scripts (pass flags after -- so npm forwards them):
   ${scriptHintAll} [-- VARIANT FLAGS…]
   ${scriptHintPwa} [-- VARIANT FLAGS…]
+  ${scriptHintModern} [-- VARIANT FLAGS…]
   ${scriptHintLynx} [-- VARIANT FLAGS…]
   ${scriptHintAstro} [-- VARIANT FLAGS…]
 
 Help for each preset:
   ${scriptHintAll} -- --help
   ${scriptHintPwa} -- --help
+  ${scriptHintModern} -- --help
   ${scriptHintLynx} -- --help
   ${scriptHintAstro} -- --help
 
@@ -134,7 +139,7 @@ Flags:
                          Templates you did NOT run are untouched (e.g. after gen:all --install, later gen:astro --install only refreshes Astro _deps).
 
 Variant filters (optional; default = all variants that apply to each template):
-  --empty --full --config-all --config-none --config-i18n --config-pinia --config-tests
+  --empty --full --config-all --config-none --config-i18n --config-pinia --config-tests --config-tailwind
 
 Examples:
   ${scriptHintAll}
@@ -151,6 +156,7 @@ const printHelpTemplate = (templateId) => {
   const variants = VARIANTS.filter((v) => variantAppliesToTemplate(v, templateId))
 
   let npmCmd = scriptHintPwa
+  if (templateId === "vue-modern-template") npmCmd = scriptHintModern
   if (templateId === "vue-lynx-template") npmCmd = scriptHintLynx
   if (templateId === "astro-clean-template") npmCmd = scriptHintAstro
 
@@ -163,7 +169,7 @@ ${npmCmd} — fixtures for ${templateId}
 
 Title: ${meta.label}
 
-Optional modules (for prompts / full preset): 
+Optional modules (for prompts / full preset):
 ${mods}
 
 Output:
@@ -201,18 +207,24 @@ const wipeVariantDirs = (templateRoot, variantIds, reinstallDeps) => {
 
 const ensureSharedDeps = (templateRoot, variantDirs, reinstallDeps) => {
   const depsDir = path.join(templateRoot, "_deps")
-  const pkgPaths = variantDirs.map((d) => path.join(d, "package.json")).filter((p) => fs.existsSync(p))
+  const pkgPaths = variantDirs
+    .map((d) => path.join(d, "package.json"))
+    .filter((p) => fs.existsSync(p))
 
   if (pkgPaths.length === 0) return
 
   const merged = mergePackageJsonFiles(pkgPaths)
   fs.mkdirSync(depsDir, { recursive: true })
-  fs.writeFileSync(path.join(depsDir, "package.json"), JSON.stringify(merged, null, 2) + "\n", "utf-8")
+  fs.writeFileSync(
+    path.join(depsDir, "package.json"),
+    JSON.stringify(merged, null, 2) + "\n",
+    "utf-8"
+  )
 
   const nm = path.join(depsDir, "node_modules")
   if (reinstallDeps || !fs.existsSync(nm)) {
     console.log(`npm install (shared) → ${depsDir}`)
-    execSync("npm install", { cwd: depsDir, stdio: "inherit" })
+    execSync("npm install", { cwd: depsDir, stdio: "inherit", shell: true })
   }
 
   for (const dir of variantDirs) {
@@ -279,6 +291,7 @@ const main = async () => {
       "config-i18n",
       "config-pinia",
       "config-tests",
+      "config-tailwind",
       "help",
       "list"
     ],
@@ -306,10 +319,7 @@ const main = async () => {
 
   if (argv.list) {
     console.log("Templates:", listTemplateIds().join(", "))
-    console.log(
-      "Variants:",
-      VARIANTS.map((v) => `${v.id} (${v.flags.join(", ")})`).join("\n")
-    )
+    console.log("Variants:", VARIANTS.map((v) => `${v.id} (${v.flags.join(", ")})`).join("\n"))
     process.exit(0)
   }
 

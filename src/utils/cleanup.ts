@@ -1,11 +1,11 @@
-import { removeDir, removeFile } from "./file.js"
 import fs from "node:fs"
 import path from "node:path"
+import { removeDir, removeFile } from "@/utils"
 
 /**
  * Recursively remove empty directories
  */
-const removeEmptyDirs = (dir) => {
+const removeEmptyDirs = (dir: string): void => {
   if (!fs.existsSync(dir)) return
   const entries = fs.readdirSync(dir)
 
@@ -24,7 +24,7 @@ const removeEmptyDirs = (dir) => {
 /**
  * Remove development artifacts and clean up empty structures
  */
-export const cleanup = (targetDir) => {
+export const cleanup = (targetDir: string): void => {
   const toRemove = [
     ".git",
     "node_modules",

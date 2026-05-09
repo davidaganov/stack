@@ -1,18 +1,20 @@
-#!/usr/bin/env node
-import { generateProject } from "./src/generate-project.js"
-import { runPrompts } from "./src/prompts.js"
-import { outro, spinner, note } from "@clack/prompts"
-import { cyan, green, dim, bold, yellow } from "kolorist"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { note, outro, spinner } from "@clack/prompts"
+import { bold, cyan, dim, green, yellow } from "kolorist"
+import { generateProject } from "@/core"
+import { getDetectedPackageManager } from "@/utils"
+import { runPrompts } from "@/ui"
+import type { ProjectAnswers } from "@/types"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const stackRoot = path.resolve(__dirname, "..")
 
 /**
  * Main execution flow
  */
-const main = async () => {
+export const main = async (): Promise<void> => {
   const ART = ["█▀▀ ▀█▀ ▄▀█ █▀▀ █▄▀", "▄▄█  █  █▀█ █▄▄ █ █"]
 
   const banner = [
@@ -26,7 +28,7 @@ const main = async () => {
   console.log(banner)
 
   const cwd = process.cwd()
-  const answers = await runPrompts(cwd)
+  const answers: ProjectAnswers = await runPrompts(cwd)
 
   const targetDir = path.join(cwd, answers.projectName)
   if (fs.existsSync(targetDir)) {
@@ -37,33 +39,48 @@ const main = async () => {
   const s = spinner()
   s.start(`Generating project in ${cyan(answers.projectName)}...`)
 
+  let installFailed = false
   try {
-    await generateProject({
-      stackRoot: __dirname,
+    const result = await generateProject({
+      stackRoot,
       templateName: answers.templateName,
       projectName: answers.projectName,
       targetDir,
       buildMode: answers.buildMode,
       optionalFeatures: answers.features,
       install: answers.install,
+      packageManager: answers.packageManager,
       quiet: true
     })
+    installFailed = result.installFailed || false
   } catch (err) {
     s.stop(yellow("Generation failed"))
     throw err
   }
 
-  s.stop(green("Project finalized"))
+  const pm = answers.packageManager || getDetectedPackageManager()
 
-  const nextSteps = `cd ${answers.projectName}${!answers.install ? "\nnpm install" : ""}\nnpm run dev`
+  if (installFailed) {
+    s.stop(
+      yellow(
+        `${pm} is not installed.\n   Project generated, but dependencies must be installed manually.`
+      )
+    )
+  } else {
+    s.stop(green("Project finalized"))
+  }
 
+  const needInstall = !answers.install || installFailed
+  const nextSteps = `cd ${answers.projectName}${needInstall ? `\n${pm} install` : ""}\n${pm} run dev`
   note(nextSteps, "Next steps")
   outro(green(bold("Success! Ready for coding.")))
 
   process.exit(0)
 }
 
-main().catch((err) => {
-  console.error(err)
-  process.exit(1)
-})
+if (process.env.NODE_ENV !== "test") {
+  main().catch((err) => {
+    console.error(err)
+    process.exit(1)
+  })
+}

@@ -5,5 +5,27 @@
   "singleQuote": false,
   "trailingComma": "none",
   "arrowParens": "always",
-  "bracketSpacing": true
+  "jsxSingleQuote": false,
+  "bracketSpacing": true,
+  "bracketSameLine": false,
+  "singleAttributePerLine": true,
+  "htmlWhitespaceSensitivity": "ignore",
+  "plugins": ["@trivago/prettier-plugin-sort-imports"],
+  "importOrder": [
+    "^node:",
+    "<THIRD_PARTY_MODULES>",
+    "^@/core",
+    "^@/config",
+    "^@/utils",
+    "^@/ui",
+    "^@/types",
+    "^@/(.*)$",
+    "^[./]"
+  ],
+  "importOrderSideEffects": false,
+  "importOrderSeparation": false,
+  "importOrderSortSpecifiers": true,
+  "importOrderCaseInsensitive": true,
+  "importOrderGroupNamespaceSpecifiers": true,
+  "endOfLine": "auto"
 }

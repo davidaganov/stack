@@ -1,150 +1,198 @@
-# WebStack template maintenance guide
+## WebStack template maintenance guide (for humans + AI)
 
-How `@davidaganov/stack` assembles projects from template repos, how to keep `.webstack` aligned with expectations, and how to extend or safely change templates.
+This document explains **how templates are structured**, **how the generator works**, **how to update/create templates and features**, and the **common pitfalls**.  
+Goal: give an AI this file + a task, and it should make correct changes without breaking `.webstack` generation.
 
-This file lives in **[davidaganov/stack](https://github.com/davidaganov/stack)** on branch `main`. Each starter is its **own** GitHub repository:
+---
 
-- [vue-pwa-template](https://github.com/davidaganov/vue-pwa-template)
-- [vue-lynx-template](https://github.com/davidaganov/vue-lynx-template)
-- [astro-clean-template](https://github.com/davidaganov/astro-clean-template)
+## Overview: repositories and responsibilities
 
-By default `npx @davidaganov/stack` clones `https://github.com/davidaganov/<templateName>` (see `resolveTemplateSource` in this repo). Local development often uses sibling folders next to the cloned `stack` repo with **matching directory names** (`vue-pwa-template`, etc.).
+- **`stack/`**: the `@davidaganov/stack` CLI (wizard, resolver, feature engine, `.stack-gen/` fixtures).
+- **Each template is a separate repository** (in local development it lives next to `stack/` as a sibling folder):
+  - `vue-pwa-template`
+  - `vue-modern-template`
+  - `vue-lynx-template`
+  - `astro-clean-template`
 
-## Why `.webstack` exists
+Local DX: if `../vue-lynx-template` (etc.) exists next to `stack/`, the generator uses it as the source instead of cloning.
 
-Templates are **one Git repo per stack** (`vue-pwa-template`, `vue-lynx-template`, `astro-clean-template`). The `.webstack` directory splits that repo into:
+---
 
-| Layer | Role |
-|--------|------|
-| `template-empty/` | Minimal runnable core: no optional modules (no Pinia, no i18n in `package.json`, no imports of optional deps). |
-| `features/<name>/` | Optional capabilities: merge `src/`, `copy` paths from `patch.json`, apply `patches`, merge `packageJson`. |
-| `features/demo-pages/` | Baseline slice for non-empty modes: routes/pages/components when optional modules are off. |
+## 1) Template repo layout: `.webstack/`
 
-`.webstack` keeps **one source repo** and explicit layering instead of duplicating presets across repos.
+Each template repository contains `.webstack/`, which defines **layers**:
 
-## How the CLI builds a project
+- **`.webstack/template-empty/`**
+  - Minimal runnable project.
+  - No optional dependencies/imports/files that require a selected feature.
+- **`.webstack/features/demo-pages/`**
+  - Baseline for `recommended/custom` modes (pages, routing, components).
+  - Must work **without** optional features (either static content or markers).
+- **`.webstack/features/<feature>/`**
+  - Optional modules: `i18n`, `pinia`, `tests`, `tailwind`, `platforms`, …
 
-Implementation: `src/generate-project.js` and `src/feature-engine.js`.
+---
 
-1. Resolve template source (local sibling `../<templateName>` in dev, or shallow clone from `https://github.com/davidaganov/<templateName>`).
-2. Copy `.webstack/template-empty` into the target directory.
-3. `resolveFeatures(selected)` — topological order using `requires` in each feature `patch.json`.
-4. **Phase A — copy:** for each feature in order: `copyFeatureFiles` merges `features/<name>/src/` into project `src/`, then applies explicit `copy` list from `patch.json`.
-5. **Phase B — patch:** for each feature: `applyFeaturePatches` (plus `remove` list).
-6. `applyPackageJsonChanges` merges dependency/script snippets from all features.
-7. `cleanupMarkers` strips `@webstack` markers from allowed extensions.
-8. If `tests` was not selected: remove `src/__tests__` and `vitest.config.ts`.
+## 2) How the CLI builds a project (actual internals)
 
-Root **`src/`** (outside `.webstack`) is the day-to-day authoring reference (“full product”). Generated output should match **behavior** when all wizard options are on; byte-identical parity with root `src/` is optional unless you maintain a golden export.
+Key places in `stack/`:
 
-## Sources of truth and drift
+- Template catalog and selectable options: `stack/src/config/templates.json`
+- Feature selection logic: `stack/src/config/templates.ts`
+- Layering engine: `stack/src/core/feature-engine.ts`
 
-| Role | Location |
-|------|-----------|
-| What users edit most | Repo root `src/`, root configs |
-| What the CLI actually applies | `.webstack/template-empty` + `.webstack/features/*` |
+Generation pipeline (essentials):
 
-After UI or route changes, update the matching `.webstack` layers so **recommended / all-on** matches the reference UX and **partial** presets still run with static English (or neutral placeholders) where a module is off.
+1. Copy `.webstack/template-empty/` into the target project.
+2. Compute the feature list and its order (respecting `requires` and special rules like applying Tailwind last).
+3. For each feature:
+   - **Copy phase**: if `features/<name>/src/` exists, it is copied entirely into `target/src/`. Then paths from `copy` in `patch.json` are copied.
+   - **Remove phase**: remove files listed in `remove` in `patch.json`.
+4. **Patch phase**: apply marker-based operations from `patches`.
+5. **package.json phase**: add `dependencies/devDependencies/scripts` from each feature’s `packageJson`.
+6. **Cleanup phase**: `cleanupMarkers()` removes `@webstack` markers and normalizes blank lines.
 
-## Layering rules
+---
 
-1. **`template-empty`** must not import optional packages or optional paths (`@/i18n`, stores, etc.).
-2. **`demo-pages`** must run with **zero** optional features enabled: no imports from disabled modules (use markers removed only when a feature applies, or plain static copy).
-3. **Optional features** extend shared files via markers: `// @webstack:…`, `<!-- @webstack:… -->`, `/* @webstack:… */`. Document conventions for your repo in `STACK_DOCK.md` if you maintain one.
-4. **`requires` in `patch.json`** encodes order when feature B patches files introduced or shaped by feature A.
+## 3) Feature contract: `patch.json`
 
-## Feature engine pitfalls
+`.webstack/features/<feature>/patch.json` (typical contract):
 
-- **Whole-folder merge:** if `features/<name>/src/` exists, **every** file under it is copied over the project. A file here overwrites the same path from an earlier feature or `template-empty`. Do not ship a “final” file under feature `src/` if a **later** patch expects **markers** left by `demo-pages` (example: avoid duplicating `404.astro` under `i18n/src/pages/` when patches target the demo-pages version).
-- **Patch markers:** `replace-marker` / `insert-before-marker` use exact substring matches after normalizing to `\n`. CRLF and spacing matter.
-- **Optional patches:** set `"optional": true` on a patch object when the target file or marker may legitimately be absent (e.g. patches to `src/__tests__/utils.ts` when the `tests` feature was not selected). Skips are silent for optional entries.
-- **Vue router:** not a user-toggle. Router setup lives in **`demo-pages`**, not a separate `router` feature pack.
+- **`name`**: feature id (must match a `value` in `stack/src/config/templates.json`)
+- **`requires`**: list of features that must be applied earlier
+- **`copy`**: extra files/directories to copy (in addition to `src/`)
+- **`remove`**: files to delete
+- **`patches`**: file edit operations
+- **`packageJson`**:
+  - `dependencies: string[]`
+  - `devDependencies: string[]`
+  - `scripts: Record<string,string>`
 
-## Astro: localized vs non-localized
+### Patch operations (what the engine actually supports)
 
-- **Without i18n:** root-level pages (`src/pages/index.astro`, `about.astro`, …), layout without `@mannisto/astro-i18n` imports; plain strings until `i18n` patches add `t()` where needed.
-- **With i18n:** feature supplies `src/pages/[locale]/…`, removes conflicting root pages per `patch.json`, patches layout, links, `404.astro`.
+Most important:
 
-Do not put `[locale]` routes in `demo-pages` unless they build **without** installing the i18n package.
+- `replace-entire`: overwrite the entire file.
+- `replace-marker`: replace a marker with `content`/`lines`.
+- `insert-before-marker` / `insert-after-marker`: insert lines around a marker.
+- `"optional": true`: if the file/marker is missing, this is not an error.
 
-## Vue PWA / Lynx specifics
+Marker matching is whitespace/newline tolerant, but the marker still needs to be unique enough.
 
-- **Lynx `platforms`:** `template-config.js` adds `platforms` when `buildMode` is `recommended` or when **all** of `pinia`, `i18n`, `tests` are in `optionalFeatures`. Adjust that block when introducing new Lynx-only toggles.
-- **PWA `tailwind-config`:** added for non-empty PWA modes in `computeSelectedFeatures`; keep in sync if presets change.
+---
 
-## Checklist: changing an existing template
+## 4) Golden rules for layers
 
-1. Decide whether the change belongs in `template-empty`, `demo-pages`, or an optional feature.
-2. Keep **empty** preset runnable: no stray optional imports.
-3. Update `patch.json` / markers; run **`npm run gen:all`** (from `stack/`) and confirm **no** `Marker not found` / non-optional `Skip patch` noise.
-4. Manually run the wizard for **empty**, **recommended**, **custom none**, **custom all**; `npm install`, `npm run dev`, `npm run build` as applicable.
-5. Optionally: `npm run parity -- --baseline <repo-or-src> --generated <output> --subset src`.
+### 4.1 `template-empty` (zero layer)
 
-## Checklist: adding a new template repository
+- Must run without any optional modules.
+- No imports of `@/i18n`, `@/stores`, Tailwind CSS, etc.
 
-1. **Repo id:** folder name and GitHub repo should match what users select (clone URL is `https://github.com/davidaganov/<templateName>` unless you change `resolveTemplateSource` / prompts).
+### 4.2 `demo-pages` (works without features)
 
-2. **`stack/src/templates.json`:** add a top-level key `<templateName>` with `label` and `features` (wizard toggles). IDs must match `value` strings used in `.webstack/features/*/patch.json` names and in code.
+- No dependencies on optional packages.
+- If behavior needs to change with a feature, use markers + feature patches.
 
-3. **`stack/src/template-config.js`:** extend `computeSelectedFeatures` if the stack needs special rules (tailwind-only PWA, Lynx `platforms`, etc.).
+### 4.3 `features/*`
 
-4. **`stack/src/prompts.js`:** uses `TEMPLATES` from `template-config.js` automatically; verify labels read well.
+- If a feature adds dependencies, list them in `packageJson`.
+- If a feature patches files that may not exist, set `"optional": true`.
+- If a feature depends on files introduced by another feature, use `requires`.
 
-5. **Batch fixtures (`scripts/generate-fixtures.mjs`):**
-   - Local DX expects a **sibling folder** next to `stack/` named exactly like `templates.json` key (`vue-pwa-template`, …).
-   - Add `VARIANTS[*].templates` filter if a variant only applies to some stacks (see `config-pinia`).
-   - Add `npm run gen:<name>` script in `stack/package.json` if you want a dedicated preset.
+---
 
-6. **`.webstack` layout:** create `template-empty/` + `features/demo-pages/` + optional features with `patch.json` (`name`, `requires`, `copy`, `patches`, `packageJson`, `remove` as needed).
+## 5) Tests: one standard
 
-7. **Documentation:** update template README and this guide’s examples if clone paths or variant matrix change.
+### Requirement
 
-## Verification
+Tests must live **only** under `src/__tests__/...`. No `*.test.ts` colocated with components.
 
-**Manual:** after edits, generate four scenarios — empty, recommended, custom with no modules, custom with all modules — and smoke-test dev/build.
+### Why this matters (and how duplicates happen)
 
-**Parity helper:** does not run the generator; compare trees after you generate into a known folder:
+The feature engine automatically copies **all** of `features/<name>/src/` into the project.  
+So the `tests` feature must not contain `src/components/.../*.test.ts`, or they will end up in the output.
 
-```bash
-cd stack
-npm run parity -- --baseline ../vue-pwa-template --generated ../tmp/my-app --subset src
+### Recommended safety in `vitest.config.ts`
+
+Narrow `include`:
+
+```ts
+include: ["src/__tests__/**/*.test.ts"]
 ```
 
-- `--baseline`: reference tree (repo root or golden folder).
-- `--generated`: CLI output directory.
-- `--subset`: comma-separated path prefixes (e.g. `src`).
+---
 
-Exit code `1` means content or file set differences (CRLF normalized on text). Ignores include `node_modules`, `dist`, lockfiles by default.
+## 6) Tailwind as an optional feature (model)
 
-## Local batch generation (`npm run gen:*`)
+Goal: the baseline project does not depend on Tailwind, while the `tailwind` feature wires it in:
 
-Output: **`.stack-gen/<template-id>/<variant>/`** (gitignored). Sibling template folders supply sources without cloning.
+- Tailwind config (`tailwind.config.*`)
+- `postcss.config.*` (if needed)
+- `tailwind.css` import in `src/assets/styles/main.css`
+- dependencies in `package.json`
 
-| Script | Scope |
-|--------|--------|
-| `npm run gen:all` | All templates × all variants that apply; per-template `_deps/` handling as implemented |
-| `npm run gen:pwa` / `gen:lynx` / `gen:astro` | One template, all its variants by default |
+Important: Tailwind should be applied **last** (see `tailwindLast()` in `stack/src/config/templates.ts`).
 
-Pass flags **after** `--`:
+---
 
-```bash
-npm run gen:all -- --install
-npm run gen:pwa -- --full --empty --help
+## 7) Lynx (vue-lynx) specifics you must not ignore
+
+### 7.1 `<style scoped>`
+
+Depending on `vue-lynx`/Rspeedy/renderer versions, scoped styles can be unreliable.  
+For stable templates, prefer:
+
+- regular `<style>` + namespaced classes (BEM-like),
+- only re-introduce scoped after verifying it on the target version.
+
+### 7.2 Rspeedy dev host on Windows
+
+IP auto-detection can pick `169.254.x.x` and the printed URLs won’t open in the browser.  
+Fix: set in `lynx.config.ts`:
+
+```ts
+server: {
+  host: "127.0.0.1"
+}
 ```
 
-Variant flags include: `--empty`, `--full`, `--config-all`, `--config-none`, `--config-i18n`, `--config-pinia`, `--config-tests`.
+---
 
-Template catalog for the wizard: **`src/templates.json`**.
+## 8) How to safely change an existing template (checklist)
 
-Shared deps: variant `node_modules` may link to `<template>/_deps/node_modules`; `--install` refreshes merged deps for the templates touched in that command.
+- Pick the layer: `template-empty` / `demo-pages` / `features/<feature>`.
+- Ensure `template-empty` still runs.
+- Verify `requires` and ordering (especially with Tailwind).
+- Generate fixtures: `npm run gen:<template>` inside `stack/`.
+- Smoke test: empty/recommended/custom-none/custom-all.
+- Run `stack` tests: `npm test` (verifies generator internals).
 
-## Release process
+---
 
-1. Ship `.webstack` + root `src/` updates together in the template repo.
-2. Ship CLI changes in `stack`, bump `@davidaganov/stack` on npm.
-3. `npm link` (or `npx`) smoke-test all templates.
-4. Optional: parity against golden outputs before publish.
+## 9) How to add a new template repo (step-by-step)
 
-## Related material
+1. Create a template repo with `.webstack` structure:
+   - `.webstack/template-empty/`
+   - `.webstack/features/demo-pages/`
+   - `.webstack/features/<feature>/`
+2. Add an entry to `stack/src/config/templates.json`.
+3. Add special rules (if needed) in `stack/src/config/templates.ts`.
+4. (Optional) add a variant in `stack/scripts/generate-fixtures.mjs`.
+5. Verify end-to-end: `npx <path_to_stack>` → wizard → `npm run dev`.
 
-- Optional per-repo notes: `STACK_DOCK.md` in a template repository.
+---
+
+## 10) `.stack-gen/` fixtures (why and how)
+
+`stack/scripts/generate-fixtures.mjs` generates combinations under:
+
+`.stack-gen/<template-id>/<variant>/`
+
+This is a quick way to catch:
+
+- missing markers,
+- wrong feature ordering,
+- extra files accidentally committed into feature `src/`,
+- dependency incompatibilities.
+
+Windows pitfall: if generation fails with `EBUSY`, a process is holding the folder (dev server, indexer, antivirus). Stop the process and regenerate.

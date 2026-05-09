@@ -1,31 +1,31 @@
-import {
-  resolveFeatures,
-  copyFeatureFiles,
-  applyFeaturePatches,
-  applyPackageJsonChanges,
-  cleanupMarkers
-} from "./feature-engine.js"
-import { cleanup } from "./utils/cleanup.js"
-import { copy } from "./utils/file.js"
-import { updatePackageJson } from "./utils/package.js"
 import { exec } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
-
-import { computeSelectedFeatures } from "./template-config.js"
+import { dim, yellow } from "kolorist"
+import {
+  applyFeaturePatches,
+  applyPackageJsonChanges,
+  cleanupMarkers,
+  copyFeatureFiles,
+  DEFAULT_STACK_ROOT,
+  resolveFeatures,
+  resolveTemplateSource
+} from "@/core"
+import { computeSelectedFeatures } from "@/config"
+import { cleanup, copy, getDetectedPackageManager, updatePackageJson } from "@/utils"
+import type { GenerateOptions } from "@/types"
 
 const execAsync = promisify(exec)
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-export const DEFAULT_STACK_ROOT = path.resolve(__dirname, "..")
-
-export const isLocalTemplate = (templateName, stackRoot = DEFAULT_STACK_ROOT) => {
+export const isLocalTemplate = (
+  templateName: string,
+  stackRoot: string = DEFAULT_STACK_ROOT
+): boolean => {
   return fs.existsSync(path.join(stackRoot, "..", templateName))
 }
 
-export const copyTemplateEmpty = async (sourcePath, targetDir) => {
+export const copyTemplateEmpty = async (sourcePath: string, targetDir: string): Promise<void> => {
   let emptyPath = path.join(sourcePath, ".webstack", "template-empty")
 
   if (!fs.existsSync(emptyPath)) {
@@ -40,24 +40,6 @@ export const copyTemplateEmpty = async (sourcePath, targetDir) => {
 }
 
 /**
- * Resolve template source: sibling repo (dev) or shallow git clone.
- */
-export const resolveTemplateSource = async (templateName, options = {}) => {
-  const stackRoot = options.stackRoot ?? DEFAULT_STACK_ROOT
-  const repoUrl = options.repoUrl ?? `https://github.com/davidaganov/${templateName}`
-  const sibling = path.join(stackRoot, "..", templateName)
-
-  if (fs.existsSync(sibling)) {
-    return { sourcePath: sibling, tmpDir: null }
-  }
-
-  const tmpBase = options.tmpDirParent ?? stackRoot
-  const tmpDir = fs.mkdtempSync(path.join(tmpBase, ".tmp-stack-src-"))
-  await execAsync(`git clone --depth 1 ${repoUrl}.git ${tmpDir}`)
-  return { sourcePath: tmpDir, tmpDir }
-}
-
-/**
  * Generate a project directory (non-interactive core used by CLI and fixtures).
  */
 export const generateProject = async ({
@@ -68,14 +50,18 @@ export const generateProject = async ({
   buildMode,
   optionalFeatures = [],
   install = false,
+  packageManager,
   quiet = false,
   repoUrl,
-  /** When set, skips clone/sibling resolve (advanced / batch after warm cache). */
   sourcePath: sourcePathOverride = null
-}) => {
-  const log = quiet ? () => {} : (...a) => console.log(...a)
+}: GenerateOptions & { repoUrl?: string; sourcePath?: string | null }): Promise<{
+  selectedFeatures: string[]
+  sourcePath: string
+  installFailed?: boolean
+}> => {
+  const log = quiet ? () => {} : (...a: unknown[]) => console.log(...a)
 
-  let tmpDir = null
+  let tmpDir: string | null = null
   let sourcePath = sourcePathOverride
 
   try {
@@ -85,12 +71,18 @@ export const generateProject = async ({
       tmpDir = resolved.tmpDir
     }
 
+    const finalSourcePath = sourcePath ?? sourcePathOverride
+    if (!finalSourcePath) {
+      throw new Error("Failed to resolve source path")
+    }
+
     if (fs.existsSync(targetDir)) {
       fs.rmSync(targetDir, { recursive: true, force: true })
     }
+
     fs.mkdirSync(targetDir, { recursive: true })
 
-    await copyTemplateEmpty(sourcePath, targetDir)
+    await copyTemplateEmpty(finalSourcePath, targetDir)
 
     const selectedFeatures =
       buildMode === "empty"
@@ -98,9 +90,9 @@ export const generateProject = async ({
         : computeSelectedFeatures(templateName, buildMode, optionalFeatures)
 
     if (selectedFeatures.length > 0) {
-      let featuresDir = path.join(sourcePath, ".webstack", "features")
+      let featuresDir = path.join(finalSourcePath, ".webstack", "features")
       if (!fs.existsSync(featuresDir)) {
-        featuresDir = path.join(sourcePath, "features")
+        featuresDir = path.join(finalSourcePath, "features")
       }
 
       if (fs.existsSync(featuresDir)) {
@@ -135,17 +127,26 @@ export const generateProject = async ({
 
     await updatePackageJson(targetDir, projectName)
 
+    let installFailed = false
+
     if (install) {
-      log(`npm install → ${targetDir}`)
-      await execAsync("npm install", { cwd: targetDir })
+      const pm = packageManager || getDetectedPackageManager()
+      log(`${pm} install → ${targetDir}`)
       try {
-        await execAsync("npm run format", { cwd: targetDir })
-      } catch {
-        log("(npm run format skipped or failed)")
+        await execAsync(`${pm} install`, { cwd: targetDir })
+        try {
+          await execAsync(`${pm} run format`, { cwd: targetDir })
+        } catch {
+          log(`(${pm} run format skipped or failed)`)
+        }
+      } catch (err: any) {
+        installFailed = true
+        log(yellow(`Warning: Could not run "${pm} install". Is it installed?`))
+        log(dim("Project generated successfully, but dependencies must be installed manually."))
       }
     }
 
-    return { selectedFeatures, sourcePath }
+    return { selectedFeatures, sourcePath: finalSourcePath, installFailed }
   } finally {
     if (tmpDir && fs.existsSync(tmpDir)) {
       fs.rmSync(tmpDir, { recursive: true, force: true })

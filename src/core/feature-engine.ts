@@ -1,41 +1,24 @@
 import fs from "node:fs"
 import path from "node:path"
+import type { FeaturePatch } from "@/types"
 
 /**
  * Resolve feature packs including dependencies (requires)
  */
-export const resolveFeatures = (selectedFeatures, featuresDir) => {
-  const resolved = new Set()
+export const resolveFeatures = (selectedFeatures: string[], featuresDir: string): string[] => {
+  const order: string[] = []
+  const visited = new Set<string>()
+  const temp = new Set<string>()
 
-  const add = (feature) => {
-    if (resolved.has(feature)) return
-    const patchPath = path.join(featuresDir, feature, "patch.json")
-    if (fs.existsSync(patchPath)) {
-      const patch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
-      for (const dep of patch.requires || []) {
-        add(dep)
-      }
-    }
-    resolved.add(feature)
-  }
-
-  for (const f of selectedFeatures) {
-    add(f)
-  }
-
-  // Topological sort
-  const order = []
-  const visited = new Set()
-  const temp = new Set()
-
-  const visit = (feature) => {
+  const visit = (feature: string) => {
     if (temp.has(feature)) throw new Error(`Circular dependency in features: ${feature}`)
     if (visited.has(feature)) return
+
     temp.add(feature)
     const patchPath = path.join(featuresDir, feature, "patch.json")
 
     if (fs.existsSync(patchPath)) {
-      const patch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
+      const patch: FeaturePatch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
       for (const dep of patch.requires || []) {
         visit(dep)
       }
@@ -46,7 +29,7 @@ export const resolveFeatures = (selectedFeatures, featuresDir) => {
     order.push(feature)
   }
 
-  for (const f of resolved) {
+  for (const f of selectedFeatures) {
     visit(f)
   }
 
@@ -56,7 +39,11 @@ export const resolveFeatures = (selectedFeatures, featuresDir) => {
 /**
  * Copy files from feature pack to target directory
  */
-export const copyFeatureFiles = async (feature, featuresDir, targetDir) => {
+export const copyFeatureFiles = async (
+  feature: string,
+  featuresDir: string,
+  targetDir: string
+): Promise<void> => {
   const featurePath = path.join(featuresDir, feature)
   const srcPath = path.join(featurePath, "src")
 
@@ -68,7 +55,7 @@ export const copyFeatureFiles = async (feature, featuresDir, targetDir) => {
   // 2. Copy specific files from patch.json if exists
   const patchPath = path.join(featurePath, "patch.json")
   if (fs.existsSync(patchPath)) {
-    const patch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
+    const patch: FeaturePatch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
     const files = patch.copy || []
 
     for (const file of files) {
@@ -89,7 +76,7 @@ export const copyFeatureFiles = async (feature, featuresDir, targetDir) => {
 /**
  * Recursive directory copy
  */
-const copyDir = (src, dest) => {
+const copyDir = (src: string, dest: string): void => {
   fs.mkdirSync(dest, { recursive: true })
 
   for (const entry of fs.readdirSync(src)) {
@@ -108,10 +95,14 @@ const copyDir = (src, dest) => {
 /**
  * Apply patches from a feature pack
  */
-export const applyFeaturePatches = (feature, featuresDir, targetDir) => {
+export const applyFeaturePatches = (
+  feature: string,
+  featuresDir: string,
+  targetDir: string
+): void => {
   const patchPath = path.join(featuresDir, feature, "patch.json")
   if (!fs.existsSync(patchPath)) return
-  const patch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
+  const patch: FeaturePatch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
   const patches = patch.patches || []
   const filesToRemove = patch.remove || []
 
@@ -131,26 +122,47 @@ export const applyFeaturePatches = (feature, featuresDir, targetDir) => {
     }
 
     if (p.action === "replace-entire") {
-      fs.writeFileSync(filePath, p.content, "utf-8")
+      fs.writeFileSync(filePath, p.content || "", "utf-8")
       continue
     }
 
     let content = fs.readFileSync(filePath, "utf-8")
     content = content.replace(/\r\n/g, "\n")
     const marker = p.marker || p.target
+    if (!marker) continue
+
     const replacement = p.content || (p.lines ? p.lines.join("\n") : "")
 
-    if (!content.includes(marker)) {
+    // Create a flexible regex that handles whitespace/newlines
+    // Transform character by character to avoid breaking regex syntax
+    let pattern = ""
+    for (const char of marker) {
+      if (/[a-zA-Z0-9]/.test(char)) {
+        pattern += char
+      } else if (/\s/.test(char)) {
+        pattern += "[\\s\\n]*"
+      } else {
+        const escaped = char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        pattern += escaped + "[\\s\\n]*"
+      }
+    }
+    
+    // Collapse redundant whitespace patterns
+    pattern = pattern.replace(/(\[\\s\\n\]\*)+/g, "[\\s\\n]*")
+
+    const flexibleRegex = new RegExp(pattern, "g")
+
+    if (!new RegExp(pattern).test(content)) {
       if (!p.optional) console.warn(`  Marker not found in ${p.file}: "${marker}"`)
       continue
     }
 
     if (p.action === "replace-marker" || p.action === "replace") {
-      content = content.replace(marker, replacement)
+      content = content.replace(flexibleRegex, replacement)
     } else if (p.action === "insert-before-marker" || p.action === "insert-before") {
-      content = content.replace(marker, replacement + "\n" + marker)
+      content = content.replace(flexibleRegex, (match) => replacement + "\n" + match)
     } else if (p.action === "insert-after-marker" || p.action === "insert-after") {
-      content = content.replace(marker, marker + "\n" + replacement)
+      content = content.replace(flexibleRegex, (match) => match + "\n" + replacement)
     }
 
     fs.writeFileSync(filePath, content, "utf-8")
@@ -160,10 +172,14 @@ export const applyFeaturePatches = (feature, featuresDir, targetDir) => {
 /**
  * Remove files specified by a feature pack from target directory
  */
-export const removeFeatureFiles = (feature, featuresDir, targetDir) => {
+export const removeFeatureFiles = (
+  feature: string,
+  featuresDir: string,
+  targetDir: string
+): void => {
   const patchPath = path.join(featuresDir, feature, "patch.json")
   if (!fs.existsSync(patchPath)) return
-  const patch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
+  const patch: FeaturePatch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
   const files = patch.remove || []
 
   for (const file of files) {
@@ -177,12 +193,12 @@ export const removeFeatureFiles = (feature, featuresDir, targetDir) => {
 /**
  * Clean up remaining webstack markers from all files
  */
-export const cleanupMarkers = (targetDir) => {
+export const cleanupMarkers = (targetDir: string): void => {
   const markerRegex = /\/\/\s*@webstack:[^\n]*/g
   const htmlMarkerRegex = /<!--\s*@webstack:[^\n]*-->/g
   const cssMarkerRegex = /\/\*\s*@webstack:[^*]*\*\//g
 
-  const processFile = (filePath) => {
+  const processFile = (filePath: string) => {
     if (!fs.existsSync(filePath)) return
     const stat = fs.statSync(filePath)
 
@@ -190,6 +206,7 @@ export const cleanupMarkers = (targetDir) => {
       for (const entry of fs.readdirSync(filePath)) {
         processFile(path.join(filePath, entry))
       }
+
       return
     }
 
@@ -216,7 +233,11 @@ export const cleanupMarkers = (targetDir) => {
 /**
  * Apply package.json changes from feature packs
  */
-export const applyPackageJsonChanges = (features, featuresDir, targetDir) => {
+export const applyPackageJsonChanges = (
+  features: string[],
+  featuresDir: string,
+  targetDir: string
+): void => {
   const pkgPath = path.join(targetDir, "package.json")
   if (!fs.existsSync(pkgPath)) return
   const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
@@ -224,7 +245,7 @@ export const applyPackageJsonChanges = (features, featuresDir, targetDir) => {
   for (const feature of features) {
     const patchPath = path.join(featuresDir, feature, "patch.json")
     if (!fs.existsSync(patchPath)) continue
-    const patch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
+    const patch: FeaturePatch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
     const pj = patch.packageJson || {}
 
     // Add dependencies
@@ -252,7 +273,11 @@ export const applyPackageJsonChanges = (features, featuresDir, targetDir) => {
 /**
  * Full apply: resolve, copy, patch, package.json, cleanup
  */
-export const applyFeatures = async (selectedFeatures, featuresDir, targetDir) => {
+export const applyFeatures = async (
+  selectedFeatures: string[],
+  featuresDir: string,
+  targetDir: string
+): Promise<void> => {
   const features = resolveFeatures(selectedFeatures, featuresDir)
 
   for (const feature of features) {

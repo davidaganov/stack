@@ -1,10 +1,11 @@
 import fs from "node:fs"
 import path from "node:path"
+import { PackageManager } from "@/types"
 
 /**
  * Reset package.json fields to match new project
  */
-export const updatePackageJson = async (targetDir, projectName) => {
+export const updatePackageJson = async (targetDir: string, projectName: string): Promise<void> => {
   const pkgPath = path.join(targetDir, "package.json")
   if (!fs.existsSync(pkgPath)) return
 
@@ -23,7 +24,7 @@ export const updatePackageJson = async (targetDir, projectName) => {
 /**
  * Clean up dependencies from package.json
  */
-export const removePackageDependencies = (pkgPath, depsToRemove) => {
+export const removePackageDependencies = (pkgPath: string, depsToRemove: string[]): void => {
   if (!fs.existsSync(pkgPath)) return
   const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
 
@@ -38,7 +39,7 @@ export const removePackageDependencies = (pkgPath, depsToRemove) => {
 /**
  * Clean up scripts from package.json
  */
-export const removePackageScripts = (pkgPath, scriptsToRemove) => {
+export const removePackageScripts = (pkgPath: string, scriptsToRemove: string[]): void => {
   if (!fs.existsSync(pkgPath)) return
   const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
   if (!pkg.scripts) return
@@ -48,4 +49,15 @@ export const removePackageScripts = (pkgPath, scriptsToRemove) => {
   }
 
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8")
+}
+
+/**
+ * Detect package manager from environment (npm_config_user_agent)
+ */
+export const getDetectedPackageManager = (): PackageManager => {
+  const userAgent = process.env.npm_config_user_agent || ""
+  if (userAgent.includes("pnpm")) return "pnpm"
+  if (userAgent.includes("yarn")) return "yarn"
+  if (userAgent.includes("bun")) return "bun"
+  return "npm"
 }
