@@ -23,7 +23,7 @@
     "template",
     "starter"
   ],
-  "homepage": "https://github.com/davidaganov/stack#readme",
+  "homepage": "https://aganov.dev/en/docs/about/projects/stack",
   "bugs": {
     "url": "https://github.com/davidaganov/stack/issues"
   },
@@ -33,7 +33,7 @@
   },
   "author": {
     "name": "David Aganov",
-    "url": "https://github.com/davidaganov"
+    "url": "https://aganov.dev"
   },
   "license": "MIT",
   "engines": {

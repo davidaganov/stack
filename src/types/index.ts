@@ -9,6 +9,7 @@ export interface Feature {
 
 export interface Template {
   label: string
+  docsUrl?: string
   features: Feature[]
 }
 

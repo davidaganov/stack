@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url"
 import { note, outro, spinner } from "@clack/prompts"
 import { bold, cyan, dim, green, yellow } from "kolorist"
 import { generateProject } from "@/core"
+import { TEMPLATES } from "@/config"
 import { getDetectedPackageManager } from "@/utils"
 import { runPrompts } from "@/ui"
 import type { ProjectAnswers } from "@/types"
@@ -73,6 +74,15 @@ export const main = async (): Promise<void> => {
   const needInstall = !answers.install || installFailed
   const nextSteps = `cd ${answers.projectName}${needInstall ? `\n${pm} install` : ""}\n${pm} run dev`
   note(nextSteps, "Next steps")
+
+  const templateDocs = TEMPLATES[answers.templateName]?.docsUrl
+  const docsLines = [
+    templateDocs ? `Template guide: ${templateDocs}` : undefined,
+    "Stack & starters: https://aganov.dev/en/docs/about/projects/stack",
+    "Resume: https://aganov.dev/en/resume"
+  ].filter((line): line is string => Boolean(line))
+  note(docsLines.join("\n"), "Documentation")
+
   outro(green(bold("Success! Ready for coding.")))
 
   process.exit(0)

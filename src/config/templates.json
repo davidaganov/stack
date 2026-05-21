@@ -1,6 +1,7 @@
 {
   "vue-pwa-template": {
     "label": "Vue PWA Template",
+    "docsUrl": "https://aganov.dev/en/docs/guides/starters/vue-pwa-template",
     "features": [
       { "value": "tailwind", "label": "Tailwind CSS", "default": true },
       { "value": "pinia", "label": "Pinia" },
@@ -10,6 +11,7 @@
   },
   "vue-modern-template": {
     "label": "Vue Modern Template",
+    "docsUrl": "https://aganov.dev/en/docs/guides/starters/vue-modern-template",
     "features": [
       { "value": "tailwind", "label": "Tailwind CSS", "default": true },
       { "value": "pinia", "label": "Pinia" },
@@ -19,6 +21,7 @@
   },
   "vue-lynx-template": {
     "label": "Vue Lynx Template",
+    "docsUrl": "https://aganov.dev/en/docs/guides/starters/vue-lynx-template",
     "features": [
       { "value": "tailwind", "label": "Tailwind CSS", "default": true },
       { "value": "pinia", "label": "Pinia" },
@@ -28,6 +31,7 @@
   },
   "astro-clean-template": {
     "label": "Astro Clean Template",
+    "docsUrl": "https://aganov.dev/en/docs/guides/starters/astro-clean-template",
     "features": [{ "value": "i18n", "label": "i18n (@mannisto/astro-i18n)" }]
   }
 }

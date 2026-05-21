@@ -33,10 +33,10 @@ If you skipped dependency installation, run `npm install` first.
 
 ## Templates
 
-- **Vue PWA**: Vue application starter with PWA-oriented setup.
-- **Vue Lynx**: Vue starter for Lynx projects.
-- **Vue Modern**: Vue starter with clean architecture and essential features.
-- **Astro Clean**: Astro starter with a clean baseline.
+- **[Vue PWA](https://aganov.dev/en/docs/guides/starters/vue-pwa-template)**: Vue application starter with PWA-oriented setup.
+- **[Vue Lynx](https://aganov.dev/en/docs/guides/starters/vue-lynx-template)**: Vue starter for Lynx projects.
+- **[Vue Modern](https://aganov.dev/en/docs/guides/starters/vue-modern-template)**: Vue starter with clean architecture and essential features.
+- **[Astro Clean](https://aganov.dev/en/docs/guides/starters/astro-clean-template)**: Astro starter with a clean baseline.
 
 ## Setup Modes
 
@@ -51,4 +51,4 @@ If you skipped dependency installation, run `npm install` first.
 
 ## License
 
-MIT © [David Aganov](https://github.com/davidaganov)
+MIT © [David Aganov](https://aganov.dev/en)
