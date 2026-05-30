@@ -1,6 +1,6 @@
 {
   "name": "@davidaganov/stack",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Interactive CLI to create modern web projects",
   "type": "module",
   "bin": {

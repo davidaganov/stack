@@ -78,7 +78,7 @@ export const main = async (): Promise<void> => {
 
   const templateDocs = TEMPLATES[answers.templateName]?.docsUrl
   const docsLines = [
-    templateDocs ? `Template guide: ${templateDocs}` : undefined,
+    templateDocs ? `Guide: ${templateDocs}` : undefined,
     "Stack: https://aganov.dev/en/docs/about/projects/stack"
   ].filter((line): line is string => Boolean(line))
   note(docsLines.join("\n"), "Documentation")
