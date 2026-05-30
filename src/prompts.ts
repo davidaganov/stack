@@ -1,28 +1,19 @@
 import { isCancel, multiselect, select, text } from "@clack/prompts"
 import { red } from "kolorist"
-import { getRecommendedFeatureIds, TEMPLATES } from "@/config"
-import { getDetectedPackageManager } from "@/utils"
-import type { BuildMode, ProjectAnswers } from "@/types"
+import { getRecommendedFeatureIds, getTemplate, TEMPLATES } from "@/config/templates"
+import { getDetectedPackageManager } from "@/utils/package"
+import type { BuildMode, ProjectAnswers, TemplateArchitecture } from "@/types"
 
-/**
- * Handle CLI cancellation
- */
 const cancel = (): never => {
   console.log(red("Operation cancelled."))
   process.exit(0)
 }
 
-/**
- * Helper to ensure prompt is not cancelled and return narrowed type
- */
-async function requiredPrompt<T>(promise: Promise<T | symbol>): Promise<T> {
+const requiredPrompt = async <T>(promise: Promise<T | symbol>): Promise<T> => {
   const result = await promise
   return !isCancel(result) ? result : cancel()
 }
 
-/**
- * Run interactive prompts to collect project configuration
- */
 export const runPrompts = async (_cwd: string): Promise<ProjectAnswers> => {
   const templateName = await requiredPrompt<string>(
     select({
@@ -33,6 +24,8 @@ export const runPrompts = async (_cwd: string): Promise<ProjectAnswers> => {
       }))
     })
   )
+
+  const template = getTemplate(templateName)
 
   const defaultProjectName = templateName
   const projectName = await requiredPrompt<string>(
@@ -46,6 +39,18 @@ export const runPrompts = async (_cwd: string): Promise<ProjectAnswers> => {
       }
     })
   )
+
+  let architecture: TemplateArchitecture | undefined
+
+  if (template.architectures?.length) {
+    architecture = await requiredPrompt<TemplateArchitecture>(
+      select({
+        message: "Architecture:",
+        options: template.architectures.map((a) => ({ value: a.value, label: a.label })),
+        initialValue: template.architectures[0].value
+      })
+    )
+  }
 
   const buildMode = await requiredPrompt<BuildMode>(
     select({
@@ -63,12 +68,11 @@ export const runPrompts = async (_cwd: string): Promise<ProjectAnswers> => {
   if (buildMode === "recommended") {
     features = getRecommendedFeatureIds(templateName)
   } else if (buildMode === "custom") {
-    const allFeatures = TEMPLATES[templateName].features
-    const initialValues = allFeatures.filter((f) => f.default === true).map((f) => f.value)
+    const initialValues = template.features.filter((f) => f.default === true).map((f) => f.value)
     const selected = await requiredPrompt<string[]>(
       multiselect({
         message: "Select features (space to toggle, enter to confirm):",
-        options: allFeatures.map((f) => ({ value: f.value, label: f.label })),
+        options: template.features.map((f) => ({ value: f.value, label: f.label })),
         initialValues,
         required: false
       })
@@ -107,6 +111,7 @@ export const runPrompts = async (_cwd: string): Promise<ProjectAnswers> => {
     templateName,
     projectName,
     buildMode,
+    architecture,
     features,
     install,
     packageManager

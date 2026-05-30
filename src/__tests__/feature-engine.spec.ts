@@ -5,16 +5,37 @@ import {
   applyFeatures,
   applyPackageJsonChanges,
   cleanupMarkers,
+  clearFeaturePatchCache,
   copyFeatureFiles,
-  removeFeatureFiles,
-  resolveFeatures
+  findExistingPatchTarget,
+  resolveFeatures,
+  shouldCopyFeaturePath
 } from "@/core/feature-engine"
+
+vi.mock("@/config/templates", () => ({
+  getTemplate: vi.fn(() => ({
+    architectures: [{ value: "flat" }]
+  })),
+  orderResolvedFeatures: (_templateName: string, features: string[]) => features,
+  computeSelectedFeatures: vi.fn(() => ["feat-1"]),
+  getFeatureAliases: vi.fn(() => ({}))
+}))
+
+const NUXT_LAYERED_ALLOWLIST = [
+  "app/__tests__/",
+  "app/composables/",
+  "app/utils/",
+  "app/config/",
+  "app/stores/",
+  "app/components/OgImage/"
+]
 
 vi.mock("node:fs")
 
 describe("core/feature-engine", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    clearFeaturePatchCache()
   })
 
   describe("resolveFeatures", () => {
@@ -39,6 +60,29 @@ describe("core/feature-engine", () => {
       })
 
       expect(() => resolveFeatures(["feat-a"], "featuresDir")).toThrow("Circular dependency")
+    })
+  })
+
+  describe("shouldCopyFeaturePath", () => {
+    it("should skip layers paths for flat architecture", () => {
+      expect(shouldCopyFeaturePath("layers/base/app/pages/index.vue", "flat")).toBe(false)
+      expect(shouldCopyFeaturePath("app/pages/index.vue", "flat")).toBe(true)
+    })
+
+    it("should skip flat app UI paths for layered architecture", () => {
+      expect(
+        shouldCopyFeaturePath(
+          "app/components/pages/home/HomeHero.vue",
+          "layered",
+          NUXT_LAYERED_ALLOWLIST
+        )
+      ).toBe(false)
+      expect(
+        shouldCopyFeaturePath("app/composables/useSiteHead.ts", "layered", NUXT_LAYERED_ALLOWLIST)
+      ).toBe(true)
+      expect(
+        shouldCopyFeaturePath("layers/base/app/pages/index.vue", "layered", NUXT_LAYERED_ALLOWLIST)
+      ).toBe(true)
     })
   })
 
@@ -78,19 +122,40 @@ describe("core/feature-engine", () => {
         "WHOLE",
         "utf-8"
       )
-      expect(fs.unlinkSync).toHaveBeenCalledWith(expect.stringContaining("old-file.txt"))
-    })
-  })
-
-  describe("removeFeatureFiles", () => {
-    it("should remove files listed in patch remove", () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true)
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ remove: ["trash.txt"] }))
-
-      removeFeatureFiles("feat", "featuresDir", "target")
       expect(fs.rmSync).toHaveBeenCalledWith(
-        expect.stringContaining("trash.txt"),
-        expect.any(Object)
+        expect.stringContaining("old-file.txt"),
+        expect.objectContaining({ recursive: true, force: true })
+      )
+    })
+
+    it("should match html markers across line breaks", () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true)
+      vi.mocked(fs.readFileSync).mockImplementation((p: unknown) => {
+        const path = String(p)
+        if (path.includes("patch.json")) {
+          return JSON.stringify({
+            patches: [
+              {
+                file: "src/components/pages/home/HomeHero.vue",
+                action: "replace-marker",
+                marker: "<!-- @webstack:hero-badge -->Template v{{ appVersion }}",
+                lines: ["{{ $t(\"home.badge\", { version: appVersion }) }}"]
+              }
+            ]
+          })
+        }
+        return `<span>
+      <!-- @webstack:hero-badge -->
+      Template v{{ appVersion }}
+    </span>`
+      })
+
+      applyFeaturePatches("i18n", "featuresDir", "target")
+
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        expect.stringContaining("HomeHero.vue"),
+        expect.stringContaining('{{ $t("home.badge", { version: appVersion }) }}'),
+        "utf-8"
       )
     })
   })
@@ -141,12 +206,49 @@ describe("core/feature-engine", () => {
     })
   })
 
+  describe("findExistingPatchTarget", () => {
+    it("should not remap app/types/ in layered mode (avoids duplicate type patches)", () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false)
+
+      expect(findExistingPatchTarget("app/types/index.ts", "target", "layered")).toBeNull()
+    })
+
+    it("should not remap app/layouts/ in layered mode (avoids duplicate layout patches)", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p: any) => {
+        const s = String(p)
+        if (s.endsWith("layers\\base\\app\\layouts\\default.vue")) return true
+        return false
+      })
+
+      expect(findExistingPatchTarget("app/layouts/default.vue", "target", "layered")).toBeNull()
+    })
+
+    it("should not remap app/components/ in layered mode (use explicit layers/base paths)", () => {
+      vi.mocked(fs.existsSync).mockImplementation((p: any) => {
+        const s = String(p)
+        if (s.endsWith("layers\\base\\app\\components\\pages\\home\\HomeHero.vue")) return true
+        return false
+      })
+
+      expect(
+        findExistingPatchTarget("app/components/pages/home/HomeHero.vue", "target", "layered")
+      ).toBeNull()
+      expect(
+        findExistingPatchTarget(
+          "layers/base/app/components/pages/home/HomeHero.vue",
+          "target",
+          "layered"
+        )
+      ).toContain("layers")
+    })
+  })
+
   describe("applyFeatures", () => {
     it("should run full pipeline", async () => {
       vi.mocked(fs.existsSync).mockReturnValue(true)
       vi.mocked(fs.readFileSync).mockReturnValue("{}")
 
-      await applyFeatures(["f"], "fdir", "tdir")
+      await applyFeatures(["f"], "fdir", "tdir", "vue-pwa-template")
       expect(fs.readFileSync).toHaveBeenCalled()
     })
   })

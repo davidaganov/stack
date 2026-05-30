@@ -1,32 +1,95 @@
 import fs from "node:fs"
 import path from "node:path"
-import type { FeaturePatch } from "@/types"
+import { getTemplate, orderResolvedFeatures } from "@/config/templates"
+import { copyDirSync } from "@/utils/file"
+import type { FeatureAliases, FeaturePatch, TemplateArchitecture } from "@/types"
 
-/**
- * Resolve feature packs including dependencies (requires)
- */
-export const resolveFeatures = (selectedFeatures: string[], featuresDir: string): string[] => {
+const resolveFeatureName = (feature: string, aliases: FeatureAliases): string =>
+  aliases[feature] ?? feature
+
+const patchCache = new Map<string, FeaturePatch>()
+
+const readFeaturePatch = (featuresDir: string, feature: string): FeaturePatch => {
+  const cacheKey = path.join(featuresDir, feature, "patch.json")
+  const cached = patchCache.get(cacheKey)
+  if (cached) return cached
+
+  const patchPath = cacheKey
+  if (!fs.existsSync(patchPath)) {
+    const empty: FeaturePatch = {}
+    patchCache.set(cacheKey, empty)
+    return empty
+  }
+
+  const patch: FeaturePatch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
+  patchCache.set(cacheKey, patch)
+  return patch
+}
+
+export const clearFeaturePatchCache = (): void => {
+  patchCache.clear()
+}
+
+export const findExistingPatchTarget = (
+  relativeFile: string,
+  targetDir: string,
+  architecture: TemplateArchitecture = "flat"
+): string | null => {
+  const direct = path.join(targetDir, relativeFile)
+  if (fs.existsSync(direct)) return direct
+  if (architecture !== "layered") return null
+  if (relativeFile.startsWith("app/")) return null
+  return null
+}
+
+const shouldSilenceMissingPatch = (
+  relativeFile: string,
+  architecture: TemplateArchitecture
+): boolean => {
+  if (architecture === "flat" && relativeFile.startsWith("layers/")) return true
+  if (architecture === "layered" && relativeFile.startsWith("app/")) return true
+  return false
+}
+
+export const shouldCopyFeaturePath = (
+  relativePath: string,
+  architecture: TemplateArchitecture,
+  layeredAppAllowlist: string[] = []
+): boolean => {
+  const p = relativePath.replace(/\\/g, "/")
+  if (architecture === "flat") return !p.startsWith("layers/")
+  if (p.startsWith("layers/")) return true
+  if (p.startsWith("app/")) {
+    return layeredAppAllowlist.some(
+      (prefix) => p === prefix.replace(/\/$/, "") || p.startsWith(prefix)
+    )
+  }
+  return true
+}
+
+export const resolveFeatures = (
+  selectedFeatures: string[],
+  featuresDir: string,
+  aliases: FeatureAliases = {}
+): string[] => {
   const order: string[] = []
   const visited = new Set<string>()
   const temp = new Set<string>()
 
   const visit = (feature: string) => {
-    if (temp.has(feature)) throw new Error(`Circular dependency in features: ${feature}`)
-    if (visited.has(feature)) return
+    const resolved = resolveFeatureName(feature, aliases)
+    if (temp.has(resolved)) throw new Error(`Circular dependency in features: ${resolved}`)
+    if (visited.has(resolved)) return
 
-    temp.add(feature)
-    const patchPath = path.join(featuresDir, feature, "patch.json")
-
-    if (fs.existsSync(patchPath)) {
-      const patch: FeaturePatch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
-      for (const dep of patch.requires || []) {
-        visit(dep)
-      }
+    temp.add(resolved)
+    const patch = readFeaturePatch(featuresDir, resolved)
+    for (const dep of patch.requires || []) {
+      visit(dep)
     }
 
-    temp.delete(feature)
-    visited.add(feature)
-    order.push(feature)
+    temp.delete(resolved)
+    visited.add(resolved)
+    order.push(resolved)
   }
 
   for (const f of selectedFeatures) {
@@ -36,88 +99,124 @@ export const resolveFeatures = (selectedFeatures: string[], featuresDir: string)
   return order
 }
 
-/**
- * Copy files from feature pack to target directory
- */
+const copyFeaturePath = (src: string, dest: string): void => {
+  if (!fs.existsSync(src)) return
+  fs.mkdirSync(path.dirname(dest), { recursive: true })
+  const stat = fs.statSync(src)
+  if (stat.isDirectory()) {
+    copyDirSync(src, dest)
+  } else {
+    fs.copyFileSync(src, dest)
+  }
+}
+
 export const copyFeatureFiles = async (
   feature: string,
   featuresDir: string,
-  targetDir: string
+  targetDir: string,
+  contentRoot = "src",
+  architecture: TemplateArchitecture = "flat",
+  layeredAppAllowlist: string[] = []
 ): Promise<void> => {
   const featurePath = path.join(featuresDir, feature)
-  const srcPath = path.join(featurePath, "src")
+  const patch = readFeaturePatch(featuresDir, feature)
+  const copyContentRoot = patch.copyContentRoot === true
 
-  // 1. Auto-copy 'src' folder if exists
-  if (fs.existsSync(srcPath)) {
-    copyDir(srcPath, path.join(targetDir, "src"))
-  }
+  if (copyContentRoot) {
+    const appPath = path.join(featurePath, "app")
+    const srcPath = path.join(featurePath, "src")
+    const layersPath = path.join(featurePath, "layers")
 
-  // 2. Copy specific files from patch.json if exists
-  const patchPath = path.join(featurePath, "patch.json")
-  if (fs.existsSync(patchPath)) {
-    const patch: FeaturePatch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
-    const files = patch.copy || []
-
-    for (const file of files) {
-      const src = path.join(featurePath, file)
-      const dest = path.join(targetDir, file)
-      if (!fs.existsSync(src)) continue
-      fs.mkdirSync(path.dirname(dest), { recursive: true })
-      const stat = fs.statSync(src)
-      if (stat.isDirectory()) {
-        copyDir(src, dest)
+    if (contentRoot === "app" && fs.existsSync(appPath)) {
+      if (architecture === "flat") {
+        copyDirSync(appPath, path.join(targetDir, "app"))
       } else {
-        fs.copyFileSync(src, dest)
+        for (const entry of fs.readdirSync(appPath)) {
+          const rel = `app/${entry}`
+          if (!shouldCopyFeaturePath(rel, architecture, layeredAppAllowlist)) continue
+          copyFeaturePath(path.join(appPath, entry), path.join(targetDir, "app", entry))
+        }
       }
+    } else if (fs.existsSync(srcPath)) {
+      copyDirSync(srcPath, path.join(targetDir, contentRoot))
     }
+
+    if (architecture === "layered" && fs.existsSync(layersPath)) {
+      copyDirSync(layersPath, path.join(targetDir, "layers"))
+    }
+  }
+
+  for (const file of patch.copy || []) {
+    if (!shouldCopyFeaturePath(file, architecture, layeredAppAllowlist)) continue
+    copyFeaturePath(path.join(featurePath, file), path.join(targetDir, file))
   }
 }
 
-/**
- * Recursive directory copy
- */
-const copyDir = (src: string, dest: string): void => {
-  fs.mkdirSync(dest, { recursive: true })
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-  for (const entry of fs.readdirSync(src)) {
-    const srcEntry = path.join(src, entry)
-    const destEntry = path.join(dest, entry)
-    const stat = fs.statSync(srcEntry)
+const buildMarkerRegex = (marker: string): RegExp => {
+  const normalized = marker.replace(/\r\n/g, "\n")
 
-    if (stat.isDirectory()) {
-      copyDir(srcEntry, destEntry)
-    } else {
-      fs.copyFileSync(srcEntry, destEntry)
+  if (normalized.includes("-->")) {
+    const commentEnd = normalized.indexOf("-->") + 3
+    const comment = normalized.slice(0, commentEnd)
+    const trailing = normalized.slice(commentEnd)
+    const commentPattern = escapeRegex(comment)
+    if (!trailing.trim()) {
+      return new RegExp(commentPattern, "g")
     }
+    const trailingPattern = escapeRegex(trailing.trim()).replace(/\s+/g, "\\s+")
+    return new RegExp(`${commentPattern}\\s*${trailingPattern}`, "g")
   }
+
+  return new RegExp(escapeRegex(normalized).replace(/\\n/g, "\\n\\s*"), "g")
 }
 
-/**
- * Apply patches from a feature pack
- */
+const markerMatches = (content: string, marker: string): boolean => buildMarkerRegex(marker).test(content)
+
+const applyMarkerPatch = (
+  content: string,
+  marker: string,
+  replacement: string,
+  action: string
+): string => {
+  const regex = buildMarkerRegex(marker)
+  const isReplace = action === "replace-marker" || action === "replace"
+
+  if (isReplace) {
+    return content.replace(regex, replacement)
+  }
+  if (action === "insert-before-marker" || action === "insert-before") {
+    return content.replace(regex, (match) => `${replacement}\n${match}`)
+  }
+  if (action === "insert-after-marker" || action === "insert-after") {
+    return content.replace(regex, (match) => `${match}\n${replacement}`)
+  }
+  return content
+}
+
 export const applyFeaturePatches = (
   feature: string,
   featuresDir: string,
-  targetDir: string
+  targetDir: string,
+  architecture: TemplateArchitecture = "flat"
 ): void => {
-  const patchPath = path.join(featuresDir, feature, "patch.json")
-  if (!fs.existsSync(patchPath)) return
-  const patch: FeaturePatch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
+  const patch = readFeaturePatch(featuresDir, feature)
   const patches = patch.patches || []
-  const filesToRemove = patch.remove || []
 
-  // Handle file removals
-  for (const file of filesToRemove) {
+  for (const file of patch.remove || []) {
     const filePath = path.join(targetDir, file)
     if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath)
+      fs.rmSync(filePath, { recursive: true, force: true })
     }
   }
 
   for (const p of patches) {
-    const filePath = path.join(targetDir, p.file)
-    if (!fs.existsSync(filePath)) {
-      if (!p.optional) console.warn(`  Skip patch: ${p.file} not found`)
+    const filePath = findExistingPatchTarget(p.file, targetDir, architecture)
+    if (!filePath) {
+      if (!p.optional && !shouldSilenceMissingPatch(p.file, architecture)) {
+        console.warn(`  Skip patch: ${p.file} not found`)
+      }
       continue
     }
 
@@ -133,66 +232,19 @@ export const applyFeaturePatches = (
 
     const replacement = p.content || (p.lines ? p.lines.join("\n") : "")
 
-    // Create a flexible regex that handles whitespace/newlines
-    // Transform character by character to avoid breaking regex syntax
-    let pattern = ""
-    for (const char of marker) {
-      if (/[a-zA-Z0-9]/.test(char)) {
-        pattern += char
-      } else if (/\s/.test(char)) {
-        pattern += "[\\s\\n]*"
-      } else {
-        const escaped = char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-        pattern += escaped + "[\\s\\n]*"
+    if (!markerMatches(content, marker)) {
+      if (!p.optional && !shouldSilenceMissingPatch(p.file, architecture)) {
+        console.warn(`  Marker not found in ${p.file}: "${marker}"`)
       }
-    }
-    
-    // Collapse redundant whitespace patterns
-    pattern = pattern.replace(/(\[\\s\\n\]\*)+/g, "[\\s\\n]*")
-
-    const flexibleRegex = new RegExp(pattern, "g")
-
-    if (!new RegExp(pattern).test(content)) {
-      if (!p.optional) console.warn(`  Marker not found in ${p.file}: "${marker}"`)
       continue
     }
 
-    if (p.action === "replace-marker" || p.action === "replace") {
-      content = content.replace(flexibleRegex, replacement)
-    } else if (p.action === "insert-before-marker" || p.action === "insert-before") {
-      content = content.replace(flexibleRegex, (match) => replacement + "\n" + match)
-    } else if (p.action === "insert-after-marker" || p.action === "insert-after") {
-      content = content.replace(flexibleRegex, (match) => match + "\n" + replacement)
-    }
+    content = applyMarkerPatch(content, marker, replacement, p.action)
 
     fs.writeFileSync(filePath, content, "utf-8")
   }
 }
 
-/**
- * Remove files specified by a feature pack from target directory
- */
-export const removeFeatureFiles = (
-  feature: string,
-  featuresDir: string,
-  targetDir: string
-): void => {
-  const patchPath = path.join(featuresDir, feature, "patch.json")
-  if (!fs.existsSync(patchPath)) return
-  const patch: FeaturePatch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
-  const files = patch.remove || []
-
-  for (const file of files) {
-    const targetPath = path.join(targetDir, file)
-    if (fs.existsSync(targetPath)) {
-      fs.rmSync(targetPath, { recursive: true, force: true })
-    }
-  }
-}
-
-/**
- * Clean up remaining webstack markers from all files
- */
 export const cleanupMarkers = (targetDir: string): void => {
   const markerRegex = /\/\/\s*@webstack:[^\n]*/g
   const htmlMarkerRegex = /<!--\s*@webstack:[^\n]*-->/g
@@ -206,7 +258,6 @@ export const cleanupMarkers = (targetDir: string): void => {
       for (const entry of fs.readdirSync(filePath)) {
         processFile(path.join(filePath, entry))
       }
-
       return
     }
 
@@ -218,10 +269,7 @@ export const cleanupMarkers = (targetDir: string): void => {
     content = content.replace(markerRegex, "")
     content = content.replace(htmlMarkerRegex, "")
     content = content.replace(cssMarkerRegex, "")
-
-    // Collapse multiple newlines (3 or more) to 2
     content = content.replace(/\n{3,}/g, "\n\n")
-    // Trim trailing newlines at the end of file, but keep one
     content = content.trimEnd() + "\n"
 
     fs.writeFileSync(filePath, content, "utf-8")
@@ -230,9 +278,6 @@ export const cleanupMarkers = (targetDir: string): void => {
   processFile(targetDir)
 }
 
-/**
- * Apply package.json changes from feature packs
- */
 export const applyPackageJsonChanges = (
   features: string[],
   featuresDir: string,
@@ -243,24 +288,19 @@ export const applyPackageJsonChanges = (
   const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
 
   for (const feature of features) {
-    const patchPath = path.join(featuresDir, feature, "patch.json")
-    if (!fs.existsSync(patchPath)) continue
-    const patch: FeaturePatch = JSON.parse(fs.readFileSync(patchPath, "utf-8"))
+    const patch = readFeaturePatch(featuresDir, feature)
     const pj = patch.packageJson || {}
 
-    // Add dependencies
     for (const dep of pj.dependencies || []) {
       if (!pkg.dependencies) pkg.dependencies = {}
       if (!pkg.dependencies[dep]) pkg.dependencies[dep] = "latest"
     }
 
-    // Add devDependencies
     for (const dep of pj.devDependencies || []) {
       if (!pkg.devDependencies) pkg.devDependencies = {}
       if (!pkg.devDependencies[dep]) pkg.devDependencies[dep] = "latest"
     }
 
-    // Add scripts
     for (const [name, script] of Object.entries(pj.scripts || {})) {
       if (!pkg.scripts) pkg.scripts = {}
       if (!pkg.scripts[name]) pkg.scripts[name] = script
@@ -270,23 +310,37 @@ export const applyPackageJsonChanges = (
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8")
 }
 
-/**
- * Full apply: resolve, copy, patch, package.json, cleanup
- */
 export const applyFeatures = async (
   selectedFeatures: string[],
   featuresDir: string,
-  targetDir: string
+  targetDir: string,
+  templateName: string,
+  aliases: FeatureAliases = {},
+  architecture: TemplateArchitecture = "flat"
 ): Promise<void> => {
-  const features = resolveFeatures(selectedFeatures, featuresDir)
+  clearFeaturePatchCache()
+
+  const template = getTemplate(templateName)
+  const contentRoot = template.contentRoot ?? "src"
+  const layeredAppAllowlist = template.layeredAppAllowlist ?? []
+  const features = orderResolvedFeatures(
+    templateName,
+    resolveFeatures(selectedFeatures, featuresDir, aliases)
+  )
 
   for (const feature of features) {
-    await copyFeatureFiles(feature, featuresDir, targetDir)
-    removeFeatureFiles(feature, featuresDir, targetDir)
+    await copyFeatureFiles(
+      feature,
+      featuresDir,
+      targetDir,
+      contentRoot,
+      architecture,
+      layeredAppAllowlist
+    )
   }
 
   for (const feature of features) {
-    applyFeaturePatches(feature, featuresDir, targetDir)
+    applyFeaturePatches(feature, featuresDir, targetDir, architecture)
   }
 
   applyPackageJsonChanges(features, featuresDir, targetDir)

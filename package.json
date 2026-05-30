@@ -1,6 +1,6 @@
 {
   "name": "@davidaganov/stack",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "Interactive CLI to create modern web projects",
   "type": "module",
   "bin": {
@@ -42,7 +42,7 @@
   "scripts": {
     "dev": "tsx index.ts",
     "build": "tsup index.ts --format esm --clean --minify --dts && node -e \"fs.copyFileSync('src/config/templates.json', 'dist/templates.json')\"",
-    "help": "tsx scripts/print-help.mjs",
+    "help": "tsx scripts/generate-fixtures.mjs --stack-help",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -50,12 +50,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "parity": "tsx scripts/webstack-parity.mjs",
     "gen:all": "tsx scripts/generate-fixtures.mjs --all",
     "gen:vue-pwa": "tsx scripts/generate-fixtures.mjs --template vue-pwa-template",
     "gen:vue-modern": "tsx scripts/generate-fixtures.mjs --template vue-modern-template",
     "gen:vue-lynx": "tsx scripts/generate-fixtures.mjs --template vue-lynx-template",
-    "gen:astro": "tsx scripts/generate-fixtures.mjs --template astro-clean-template"
+    "gen:astro": "tsx scripts/generate-fixtures.mjs --template astro-clean-template",
+    "gen:nuxt-modern": "tsx scripts/generate-fixtures.mjs --template nuxt-modern-template"
   },
   "publishConfig": {
     "access": "public"

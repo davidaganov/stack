@@ -1,37 +1,58 @@
 {
   "vue-pwa-template": {
     "label": "Vue PWA Template",
-    "docsUrl": "https://aganov.dev/en/docs/guides/starters/vue-pwa-template",
-    "features": [
-      { "value": "tailwind", "label": "Tailwind CSS", "default": true },
-      { "value": "pinia", "label": "Pinia" },
-      { "value": "i18n", "label": "i18n (vue-i18n + polyglot-keeper)" },
-      { "value": "tests", "label": "Unit Tests (vitest)" }
-    ]
+    "docsUrl": "https://aganov.dev/en/docs/guides/templates/vue-pwa-template",
+    "genScript": "npm run gen:vue-pwa"
   },
   "vue-modern-template": {
     "label": "Vue Modern Template",
-    "docsUrl": "https://aganov.dev/en/docs/guides/starters/vue-modern-template",
-    "features": [
-      { "value": "tailwind", "label": "Tailwind CSS", "default": true },
-      { "value": "pinia", "label": "Pinia" },
-      { "value": "i18n", "label": "i18n (vue-i18n + polyglot-keeper)" },
-      { "value": "tests", "label": "Unit Tests (vitest)" }
-    ]
+    "docsUrl": "https://aganov.dev/en/docs/guides/templates/vue-modern-template",
+    "genScript": "npm run gen:vue-modern"
   },
   "vue-lynx-template": {
     "label": "Vue Lynx Template",
-    "docsUrl": "https://aganov.dev/en/docs/guides/starters/vue-lynx-template",
-    "features": [
-      { "value": "tailwind", "label": "Tailwind CSS", "default": true },
-      { "value": "pinia", "label": "Pinia" },
-      { "value": "i18n", "label": "i18n (custom + polyglot-keeper)" },
-      { "value": "tests", "label": "Unit Tests (vitest)" }
-    ]
+    "docsUrl": "https://aganov.dev/en/docs/guides/templates/vue-lynx-template",
+    "genScript": "npm run gen:vue-lynx"
   },
   "astro-clean-template": {
     "label": "Astro Clean Template",
-    "docsUrl": "https://aganov.dev/en/docs/guides/starters/astro-clean-template",
+    "docsUrl": "https://aganov.dev/en/docs/guides/templates/astro-clean-template",
+    "genScript": "npm run gen:astro",
+    "demoPagesFeature": "demo-pages",
     "features": [{ "value": "i18n", "label": "i18n (@mannisto/astro-i18n)" }]
+  },
+  "nuxt-modern-template": {
+    "label": "Nuxt Modern Template",
+    "docsUrl": "https://aganov.dev/en/docs/guides/templates/nuxt-modern-template",
+    "genScript": "npm run gen:nuxt-modern",
+    "contentRoot": "app",
+    "architectures": [
+      { "value": "flat", "label": "Flat — single app/ directory" },
+      { "value": "layered", "label": "Layered — app/ + layers/base + layers/ui" }
+    ],
+    "demoPagesFeature": {
+      "flat": "demo-pages-flat",
+      "layered": "demo-pages-layered"
+    },
+    "featureOrder": [
+      { "after": ["content"], "before": ["i18n"] },
+      { "after": ["tailwind"], "before": ["i18n", "pinia"] }
+    ],
+    "layeredAppAllowlist": [
+      "app/__tests__/",
+      "app/composables/",
+      "app/utils/",
+      "app/config/",
+      "app/stores/",
+      "app/components/OgImage/"
+    ],
+    "features": [
+      { "value": "tailwind", "label": "Tailwind CSS", "default": true },
+      { "value": "pinia", "label": "Pinia" },
+      { "value": "i18n", "label": "i18n (@nuxtjs/i18n + polyglot-keeper)" },
+      { "value": "seo", "label": "SEO (@nuxtjs/seo, OG, sitemap)" },
+      { "value": "content", "label": "Content (@nuxt/content + blog)" },
+      { "value": "tests", "label": "Unit Tests (Vitest + @nuxt/test-utils)" }
+    ]
   }
 }

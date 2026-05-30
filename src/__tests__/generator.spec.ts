@@ -15,25 +15,23 @@ vi.mock("@/core/resolver", () => ({
 }))
 
 vi.mock("@/core/feature-engine", () => ({
-  applyFeaturePatches: vi.fn(),
-  applyPackageJsonChanges: vi.fn(),
-  cleanupMarkers: vi.fn(),
-  copyFeatureFiles: vi.fn(),
-  resolveFeatures: vi.fn(() => [])
+  applyFeatures: vi.fn()
 }))
 
-vi.mock("@/utils", () => ({
-  cleanup: vi.fn(),
-  copy: vi.fn(),
+vi.mock("@/utils/file", () => ({
+  copy: vi.fn()
+}))
+
+vi.mock("@/utils/package", () => ({
   updatePackageJson: vi.fn()
 }))
 
-vi.mock("@/config", () => ({
+vi.mock("@/config/templates", () => ({
+  getTemplate: vi.fn(() => ({
+    architectures: [{ value: "flat" }]
+  })),
   computeSelectedFeatures: vi.fn(() => ["feat-1"]),
-  TEMPLATES: { t: { label: "T", features: [] } },
-  getOptionalFeatureIds: vi.fn(),
-  getRecommendedFeatureIds: vi.fn(),
-  listTemplateIds: vi.fn()
+  getFeatureAliases: vi.fn(() => ({}))
 }))
 
 describe("core/generator", () => {
@@ -48,6 +46,7 @@ describe("core/generator", () => {
         sourcePath: "/tmp-dir",
         tmpDir: "/tmp-dir"
       })
+      vi.mocked(fs.statSync).mockReturnValue({ isDirectory: () => false } as any)
 
       await generateProject({
         templateName: "t",
@@ -62,11 +61,12 @@ describe("core/generator", () => {
       expect(fs.rmSync).toHaveBeenCalledWith("/tmp-dir", expect.any(Object))
     })
 
-    it("should throw if finalSourcePath is missing", async () => {
+    it("should throw if source path is missing", async () => {
       vi.mocked(resolver.resolveTemplateSource).mockResolvedValue({
         sourcePath: "",
         tmpDir: null
       })
+      vi.mocked(fs.existsSync).mockReturnValue(false)
 
       await expect(
         generateProject({

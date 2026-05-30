@@ -1,20 +1,23 @@
 import fs from "node:fs"
 import { outro } from "@clack/prompts"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import * as core from "@/core"
-import * as ui from "@/ui"
+import * as generator from "@/core/generator"
+import * as prompts from "@/prompts"
 import { main } from "@/main"
 
 vi.mock("node:fs")
+vi.mock("@/config/templates", () => ({
+  TEMPLATES: { t: { label: "T", docsUrl: "https://example.com" } }
+}))
 vi.mock("@clack/prompts", () => ({
   outro: vi.fn(),
   spinner: vi.fn(() => ({ start: vi.fn(), stop: vi.fn() })),
   note: vi.fn()
 }))
-vi.mock("@/core", () => ({
+vi.mock("@/core/generator", () => ({
   generateProject: vi.fn().mockResolvedValue({ installFailed: false })
 }))
-vi.mock("@/ui", () => ({
+vi.mock("@/prompts", () => ({
   runPrompts: vi.fn()
 }))
 
@@ -27,7 +30,7 @@ describe("main", () => {
   })
 
   it("should run main flow successfully", async () => {
-    vi.mocked(ui.runPrompts).mockResolvedValue({
+    vi.mocked(prompts.runPrompts).mockResolvedValue({
       templateName: "t",
       projectName: "p",
       buildMode: "recommended",
@@ -38,12 +41,12 @@ describe("main", () => {
 
     await expect(main()).rejects.toThrow("exit")
 
-    expect(core.generateProject).toHaveBeenCalled()
-    expect(ui.runPrompts).toHaveBeenCalled()
+    expect(generator.generateProject).toHaveBeenCalled()
+    expect(prompts.runPrompts).toHaveBeenCalled()
   })
 
   it("should exit if directory exists", async () => {
-    vi.mocked(ui.runPrompts).mockResolvedValue({
+    vi.mocked(prompts.runPrompts).mockResolvedValue({
       projectName: "exists"
     } as any)
     vi.mocked(fs.existsSync).mockReturnValue(true)

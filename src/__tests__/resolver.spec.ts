@@ -2,6 +2,10 @@ import fs from "node:fs"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { resolveTemplateSource } from "@/core/resolver"
 
+vi.mock("@/config/templates", () => ({
+  TEMPLATES: {}
+}))
+
 vi.mock("node:child_process", () => ({
   exec: vi.fn().mockResolvedValue({ stdout: "" })
 }))

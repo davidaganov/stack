@@ -3,51 +3,68 @@ import fs from "node:fs"
 import path from "node:path"
 import { promisify } from "node:util"
 import { dim, yellow } from "kolorist"
-import {
-  applyFeaturePatches,
-  applyPackageJsonChanges,
-  cleanupMarkers,
-  copyFeatureFiles,
-  DEFAULT_STACK_ROOT,
-  resolveFeatures,
-  resolveTemplateSource
-} from "@/core"
-import { computeSelectedFeatures } from "@/config"
-import { cleanup, copy, getDetectedPackageManager, updatePackageJson } from "@/utils"
-import type { GenerateOptions } from "@/types"
+import { applyFeatures } from "@/core/feature-engine"
+import { DEFAULT_STACK_ROOT, resolveTemplateSource } from "@/core/resolver"
+import { computeSelectedFeatures, getFeatureAliases, getTemplate } from "@/config/templates"
+import { copy } from "@/utils/file"
+import { getDetectedPackageManager, updatePackageJson } from "@/utils/package"
+import type { GenerateOptions, TemplateArchitecture } from "@/types"
 
 const execAsync = promisify(exec)
 
-export const isLocalTemplate = (
-  templateName: string,
-  stackRoot: string = DEFAULT_STACK_ROOT
-): boolean => {
-  return fs.existsSync(path.join(stackRoot, "..", templateName))
+const GENERATED_ARTIFACTS = [
+  ".git",
+  "node_modules",
+  "dist",
+  "coverage",
+  "package-lock.json",
+  "yarn.lock",
+  "pnpm-lock.yaml",
+  ".eslintcache"
+]
+
+const removeGeneratedArtifacts = (targetDir: string): void => {
+  for (const item of GENERATED_ARTIFACTS) {
+    const fullPath = path.join(targetDir, item)
+    if (!fs.existsSync(fullPath)) continue
+
+    const stat = fs.statSync(fullPath)
+    if (stat.isDirectory()) {
+      fs.rmSync(fullPath, { recursive: true, force: true })
+    } else {
+      fs.unlinkSync(fullPath)
+    }
+  }
 }
 
-export const copyTemplateEmpty = async (sourcePath: string, targetDir: string): Promise<void> => {
-  let emptyPath = path.join(sourcePath, ".webstack", "template-empty")
+export const copyTemplateEmpty = async (
+  sourcePath: string,
+  targetDir: string,
+  architecture: TemplateArchitecture = "flat"
+): Promise<void> => {
+  const basePath = path.join(sourcePath, "template-empty-base")
+  if (fs.existsSync(basePath)) await copy(basePath, targetDir)
 
-  if (!fs.existsSync(emptyPath)) {
-    emptyPath = path.join(sourcePath, "template-empty")
-  }
+  const candidates = [
+    path.join(sourcePath, `template-empty-${architecture}`),
+    path.join(sourcePath, "template-empty")
+  ]
 
-  if (!fs.existsSync(emptyPath)) {
-    throw new Error(`template-empty not found in ${sourcePath}`)
+  const emptyPath = candidates.find((p) => fs.existsSync(p))
+  if (!emptyPath) {
+    throw new Error(`template-empty not found in ${sourcePath} (architecture: ${architecture})`)
   }
 
   await copy(emptyPath, targetDir)
 }
 
-/**
- * Generate a project directory (non-interactive core used by CLI and fixtures).
- */
 export const generateProject = async ({
   stackRoot = DEFAULT_STACK_ROOT,
   templateName,
   projectName,
   targetDir,
   buildMode,
+  architecture: architectureInput,
   optionalFeatures = [],
   install = false,
   packageManager,
@@ -60,6 +77,9 @@ export const generateProject = async ({
   installFailed?: boolean
 }> => {
   const log = quiet ? () => {} : (...a: unknown[]) => console.log(...a)
+  const template = getTemplate(templateName)
+  const architecture = architectureInput ?? template.architectures?.[0]?.value ?? "flat"
+  const featureAliases = getFeatureAliases(templateName, architecture)
 
   let tmpDir: string | null = null
   let sourcePath = sourcePathOverride
@@ -71,8 +91,7 @@ export const generateProject = async ({
       tmpDir = resolved.tmpDir
     }
 
-    const finalSourcePath = sourcePath ?? sourcePathOverride
-    if (!finalSourcePath) {
+    if (!sourcePath) {
       throw new Error("Failed to resolve source path")
     }
 
@@ -82,48 +101,31 @@ export const generateProject = async ({
 
     fs.mkdirSync(targetDir, { recursive: true })
 
-    await copyTemplateEmpty(finalSourcePath, targetDir)
+    await copyTemplateEmpty(sourcePath, targetDir, architecture)
 
-    const selectedFeatures =
-      buildMode === "empty"
-        ? []
-        : computeSelectedFeatures(templateName, buildMode, optionalFeatures)
+    const selectedFeatures = computeSelectedFeatures(
+      templateName,
+      buildMode,
+      optionalFeatures,
+      architecture
+    )
 
     if (selectedFeatures.length > 0) {
-      let featuresDir = path.join(finalSourcePath, ".webstack", "features")
-      if (!fs.existsSync(featuresDir)) {
-        featuresDir = path.join(finalSourcePath, "features")
-      }
+      const featuresDir = path.join(sourcePath, "features")
 
       if (fs.existsSync(featuresDir)) {
-        const features = resolveFeatures(selectedFeatures, featuresDir)
-
-        for (const feature of features) {
-          await copyFeatureFiles(feature, featuresDir, targetDir)
-        }
-
-        for (const feature of features) {
-          applyFeaturePatches(feature, featuresDir, targetDir)
-        }
-
-        applyPackageJsonChanges(features, featuresDir, targetDir)
+        await applyFeatures(
+          selectedFeatures,
+          featuresDir,
+          targetDir,
+          templateName,
+          featureAliases,
+          architecture
+        )
       }
     }
 
-    cleanup(targetDir)
-    cleanupMarkers(targetDir)
-
-    if (!selectedFeatures.includes("tests")) {
-      const testsDir = path.join(targetDir, "src", "__tests__")
-      if (fs.existsSync(testsDir)) {
-        fs.rmSync(testsDir, { recursive: true, force: true })
-      }
-
-      const vitestConfig = path.join(targetDir, "vitest.config.ts")
-      if (fs.existsSync(vitestConfig)) {
-        fs.unlinkSync(vitestConfig)
-      }
-    }
+    removeGeneratedArtifacts(targetDir)
 
     await updatePackageJson(targetDir, projectName)
 
@@ -139,14 +141,14 @@ export const generateProject = async ({
         } catch {
           log(`(${pm} run format skipped or failed)`)
         }
-      } catch (err: any) {
+      } catch {
         installFailed = true
         log(yellow(`Warning: Could not run "${pm} install". Is it installed?`))
         log(dim("Project generated successfully, but dependencies must be installed manually."))
       }
     }
 
-    return { selectedFeatures, sourcePath: finalSourcePath, installFailed }
+    return { selectedFeatures, sourcePath, installFailed }
   } finally {
     if (tmpDir && fs.existsSync(tmpDir)) {
       fs.rmSync(tmpDir, { recursive: true, force: true })

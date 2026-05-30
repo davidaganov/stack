@@ -1,7 +1,7 @@
 import * as prompts from "@clack/prompts"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { TEMPLATES } from "@/config"
-import { runPrompts } from "@/ui/prompts"
+import { TEMPLATES } from "@/config/templates"
+import { runPrompts } from "@/prompts"
 
 vi.mock("@clack/prompts", () => ({
   isCancel: vi.fn(() => false),
@@ -13,7 +13,7 @@ vi.mock("@clack/prompts", () => ({
   spinner: vi.fn(() => ({ start: vi.fn(), stop: vi.fn() }))
 }))
 
-describe("ui/prompts", () => {
+describe("prompts", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Default mock data for TEMPLATES

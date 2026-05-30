@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
+import { TEMPLATES } from "@/config/templates"
 import type { ResolvedSource } from "@/types"
 
 const execAsync = promisify(exec)
@@ -18,7 +19,10 @@ export const resolveTemplateSource = async (
   options: { stackRoot?: string; repoUrl?: string; tmpDirParent?: string } = {}
 ): Promise<ResolvedSource> => {
   const stackRoot = options.stackRoot ?? DEFAULT_STACK_ROOT
-  const repoUrl = options.repoUrl ?? `https://github.com/davidaganov/${templateName}`
+  const repoUrl =
+    options.repoUrl ??
+    TEMPLATES[templateName]?.repoUrl ??
+    `https://github.com/davidaganov/${templateName}`
   const sibling = path.join(stackRoot, "..", templateName)
 
   if (fs.existsSync(sibling)) {

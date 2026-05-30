@@ -2,15 +2,22 @@
 /**
  * Batch-generate template variants under `.stack-gen/` for local DX.
  *
- * See package.json: gen:all, gen:pwa, gen:lynx, gen:astro
+ * See package.json: gen:all, gen:vue-pwa, gen:vue-modern, gen:vue-lynx, gen:astro, gen:nuxt-modern
  */
 import { execSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import minimist from "minimist"
-import { getRecommendedFeatureIds, listTemplateIds, TEMPLATES } from "../src/config/index.ts"
-import { generateProject, resolveTemplateSource } from "../src/core/index.ts"
+import {
+  expandVariantsForTemplate,
+  FIXTURE_VARIANTS,
+  getFixtureVariantFlags,
+  variantAppliesToTemplate
+} from "../src/config/fixtures.ts"
+import { getTemplate, TEMPLATES } from "../src/config/templates.ts"
+import { generateProject } from "../src/core/generator.ts"
+import { resolveTemplateSource } from "../src/core/resolver.ts"
 import { linkNodeModules } from "./lib/link-node-modules.mjs"
 import { mergePackageJsonFiles } from "./lib/merge-package-json.mjs"
 
@@ -18,112 +25,66 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const STACK_ROOT = path.resolve(__dirname, "..")
 const OUT_ROOT = path.join(STACK_ROOT, ".stack-gen")
 
-/**
- * @typedef {{ id: string, flags: string[], templates?: string[], buildMode: string, optionalFeatures: (t: string) => string[], blurb: string }} VariantDef
- */
+const scriptHintAll = "npm run gen:all"
 
-/** @type {VariantDef[]} */
-const VARIANTS = [
-  {
-    id: "empty",
-    flags: ["empty"],
-    buildMode: "empty",
-    optionalFeatures: () => [],
-    blurb: "Minimal runnable project without demo pages or optional modules."
-  },
-  {
-    id: "full",
-    flags: ["full"],
-    buildMode: "recommended",
-    optionalFeatures: (t) => getRecommendedFeatureIds(t),
-    blurb: "Recommended preset with demo pages and common optional modules."
-  },
-  {
-    id: "config-all",
-    flags: ["config-all"],
-    buildMode: "custom",
-    optionalFeatures: (t) => getRecommendedFeatureIds(t),
-    blurb: "Custom mode with every optional module enabled."
-  },
-  {
-    id: "config-none",
-    flags: ["config-none"],
-    buildMode: "custom",
-    optionalFeatures: () => [],
-    blurb: "Custom mode with demo pages and no optional modules."
-  },
-  {
-    id: "config-i18n",
-    flags: ["config-i18n"],
-    buildMode: "custom",
-    optionalFeatures: () => ["i18n"],
-    blurb: "Custom mode — i18n only."
-  },
-  {
-    id: "config-pinia",
-    flags: ["config-pinia"],
-    templates: ["vue-pwa-template", "vue-lynx-template", "vue-modern-template"],
-    buildMode: "custom",
-    optionalFeatures: () => ["pinia"],
-    blurb: "Custom mode — Pinia only (Vue templates)."
-  },
-  {
-    id: "config-tests",
-    flags: ["config-tests"],
-    templates: ["vue-pwa-template", "vue-lynx-template", "vue-modern-template"],
-    buildMode: "custom",
-    optionalFeatures: () => ["tests"],
-    blurb: "Custom mode — Vitest module only (Vue templates)."
-  },
-  {
-    id: "config-tailwind",
-    flags: ["config-tailwind"],
-    templates: ["vue-modern-template", "vue-pwa-template", "vue-lynx-template"],
-    buildMode: "custom",
-    blurb: "Custom mode — Tailwind CSS only (Vue Modern / Vue PWA / Vue Lynx).",
-    optionalFeatures: () => ["tailwind"]
-  }
-]
+const printStackHelp = () => {
+  console.log(`
+  @davidaganov/stack
+  ==================
 
-const variantAppliesToTemplate = (v, templateId) => {
-  if (!v.templates) return true
-  return v.templates.includes(templateId)
+  USAGE
+    npx @davidaganov/stack       # CLI (remote)
+    stack                        # CLI (local link)
+
+  GENERATION (.stack-gen/)
+    npm run gen:all              # all templates × all variants
+    npm run gen:vue-pwa          # gen:vue-modern | gen:vue-lynx | gen:astro | gen:nuxt-modern
+    --install                    # wipe that template's _deps/, merge pkg, npm install once
+    --help                       # variant flags & paths for this preset
+
+    npm run gen:all -- --install
+    npm run gen:astro -- --full --empty
+    npm run gen:vue-pwa -- --config-i18n --install
+    npm run gen:vue-lynx -- --help
+
+    node scripts/generate-fixtures.mjs --list
+
+  MAINTENANCE
+    src/config/templates.json    # catalog
+    https://github.com/davidaganov/stack/blob/main/GUIDLINE.md
+`)
 }
 
-const scriptHintAll = "npm run gen:all"
-const scriptHintPwa = "npm run gen:vue-pwa"
-const scriptHintModern = "npm run gen:vue-modern"
-const scriptHintLynx = "npm run gen:vue-lynx"
-const scriptHintAstro = "npm run gen:astro"
-
 const printHelpBrief = () => {
+  printStackHelp()
   console.log(`
 Fixture generator — writes under ${OUT_ROOT}/
 
 npm scripts (pass flags after -- so npm forwards them):
   ${scriptHintAll} [-- VARIANT FLAGS…]
-  ${scriptHintPwa} [-- VARIANT FLAGS…]
-  ${scriptHintModern} [-- VARIANT FLAGS…]
-  ${scriptHintLynx} [-- VARIANT FLAGS…]
-  ${scriptHintAstro} [-- VARIANT FLAGS…]
+  npm run gen:vue-pwa [-- VARIANT FLAGS…]
+  npm run gen:vue-modern [-- VARIANT FLAGS…]
+  npm run gen:vue-lynx [-- VARIANT FLAGS…]
+  npm run gen:astro [-- VARIANT FLAGS…]
+  npm run gen:nuxt-modern [-- VARIANT FLAGS…]
+  Multi-arch templates: config-flat-<feature>, config-layered-<feature>, full-flat, full-layered, …
 
 Help for each preset:
   ${scriptHintAll} -- --help
-  ${scriptHintPwa} -- --help
-  ${scriptHintModern} -- --help
-  ${scriptHintLynx} -- --help
-  ${scriptHintAstro} -- --help
+  npm run gen:vue-pwa -- --help
 
 Other:
   node scripts/generate-fixtures.mjs --list    template ids + variant ids
 
 Always pass script-only flags after double hyphen, e.g.:
   ${scriptHintAll} -- --install
-  ${scriptHintAstro} -- --full --install
+  npm run gen:astro -- --full --install
 `)
 }
 
 const printHelpAll = () => {
+  const variantFlags = FIXTURE_VARIANTS.flatMap((v) => v.flags.map((f) => `--${f}`)).join(" ")
+
   console.log(`
 ${scriptHintAll} — generate EVERY catalog template × EVERY variant that applies
 
@@ -139,29 +100,32 @@ Flags:
                          Templates you did NOT run are untouched (e.g. after gen:all --install, later gen:astro --install only refreshes Astro _deps).
 
 Variant filters (optional; default = all variants that apply to each template):
-  --empty --full --config-all --config-none --config-i18n --config-pinia --config-tests --config-tailwind
+  ${variantFlags}
 
 Examples:
   ${scriptHintAll}
   ${scriptHintAll} -- --install
   ${scriptHintAll} -- --full --empty
 
-Configurable templates are listed in src/templates.json
+Configurable templates are listed in src/config/templates.json
 `)
 }
 
 const printHelpTemplate = (templateId) => {
   const meta = TEMPLATES[templateId]
   const mods = meta.features.map((f) => `  • ${f.value} — ${f.label}`).join("\n")
-  const variants = VARIANTS.filter((v) => variantAppliesToTemplate(v, templateId))
-
-  let npmCmd = scriptHintPwa
-  if (templateId === "vue-modern-template") npmCmd = scriptHintModern
-  if (templateId === "vue-lynx-template") npmCmd = scriptHintLynx
-  if (templateId === "astro-clean-template") npmCmd = scriptHintAstro
+  const variants = FIXTURE_VARIANTS.filter((v) => variantAppliesToTemplate(v, templateId))
+  const npmCmd =
+    getTemplate(templateId).genScript ??
+    `node scripts/generate-fixtures.mjs --template ${templateId}`
 
   const variantLines = variants
-    .map((v) => `  ${v.flags.map((f) => `--${f}`).join(", ")}\n      folder: ${v.id}/ — ${v.blurb}`)
+    .flatMap((v) => {
+      const expanded = expandVariantsForTemplate([v], templateId)
+      return expanded.map(
+        (ev) => `  ${v.flags.map((f) => `--${f}`).join(", ")}\n      folder: ${ev.id}/ — ${v.blurb}`
+      )
+    })
     .join("\n")
 
   console.log(`
@@ -252,6 +216,7 @@ const runTemplateBatch = async ({ templateId, variants, installShared }) => {
         projectName: `${templateId}-${v.id}`,
         targetDir,
         buildMode: v.buildMode,
+        architecture: v.architecture,
         optionalFeatures: v.optionalFeatures(templateId),
         install: false,
         quiet: true,
@@ -271,33 +236,25 @@ const runTemplateBatch = async ({ templateId, variants, installShared }) => {
 
 const pickVariantsFromArgv = (argv) => {
   const requested = new Set()
-  for (const v of VARIANTS) {
+  for (const v of FIXTURE_VARIANTS) {
     const hit = v.flags.some((f) => argv[f] === true)
     if (hit) requested.add(v.id)
   }
-  if (requested.size === 0) return VARIANTS
-  return VARIANTS.filter((v) => requested.has(v.id))
+  if (requested.size === 0) return FIXTURE_VARIANTS
+  return FIXTURE_VARIANTS.filter((v) => requested.has(v.id))
 }
 
 const main = async () => {
   const argv = minimist(process.argv.slice(2), {
-    boolean: [
-      "all",
-      "install",
-      "empty",
-      "full",
-      "config-all",
-      "config-none",
-      "config-i18n",
-      "config-pinia",
-      "config-tests",
-      "config-tailwind",
-      "help",
-      "list"
-    ],
+    boolean: ["all", "install", "help", "list", "stack-help", ...getFixtureVariantFlags()],
     string: ["template", "t"],
     alias: { t: "template", h: "help" }
   })
+
+  if (argv["stack-help"]) {
+    printStackHelp()
+    process.exit(0)
+  }
 
   if (argv.help) {
     if (argv.all) {
@@ -306,7 +263,7 @@ const main = async () => {
     }
     const tid = argv.template || argv.t
     if (tid) {
-      if (!listTemplateIds().includes(tid)) {
+      if (!Object.keys(TEMPLATES).includes(tid)) {
         console.error(`Unknown template: ${tid}`)
         process.exit(1)
       }
@@ -318,8 +275,18 @@ const main = async () => {
   }
 
   if (argv.list) {
-    console.log("Templates:", listTemplateIds().join(", "))
-    console.log("Variants:", VARIANTS.map((v) => `${v.id} (${v.flags.join(", ")})`).join("\n"))
+    console.log("Templates:", Object.keys(TEMPLATES).join(", "))
+    console.log(
+      "Base variants:",
+      FIXTURE_VARIANTS.map((v) => `${v.id} (${v.flags.join(", ")})`).join("\n")
+    )
+    for (const templateId of Object.keys(TEMPLATES)) {
+      const architectures = TEMPLATES[templateId]?.architectures
+      if (architectures?.length > 1) {
+        const ids = expandVariantsForTemplate(FIXTURE_VARIANTS, templateId).map((v) => v.id)
+        console.log(`${templateId} fixture folders:`, ids.join(", "))
+      }
+    }
     process.exit(0)
   }
 
@@ -328,10 +295,10 @@ const main = async () => {
 
   let templates = []
   if (argv.all) {
-    templates = listTemplateIds()
+    templates = Object.keys(TEMPLATES)
   } else if (argv.template || argv.t) {
     templates = [argv.template || argv.t]
-    if (!listTemplateIds().includes(templates[0])) {
+    if (!Object.keys(TEMPLATES).includes(templates[0])) {
       console.error(`Unknown template: ${templates[0]}`)
       process.exit(1)
     }
@@ -343,7 +310,10 @@ const main = async () => {
   fs.mkdirSync(OUT_ROOT, { recursive: true })
 
   for (const templateId of templates) {
-    const variants = variantFilter.filter((v) => variantAppliesToTemplate(v, templateId))
+    const variants = expandVariantsForTemplate(
+      variantFilter.filter((v) => variantAppliesToTemplate(v, templateId)),
+      templateId
+    )
     if (variants.length === 0) {
       console.warn(`No variants apply to ${templateId}; skipping.`)
       continue

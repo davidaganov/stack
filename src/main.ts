@@ -3,11 +3,11 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { note, outro, spinner } from "@clack/prompts"
 import { bold, cyan, dim, green, yellow } from "kolorist"
-import { generateProject } from "@/core"
-import { TEMPLATES } from "@/config"
-import { getDetectedPackageManager } from "@/utils"
-import { runPrompts } from "@/ui"
+import { generateProject } from "@/core/generator"
+import { TEMPLATES } from "@/config/templates"
+import { getDetectedPackageManager } from "@/utils/package"
 import type { ProjectAnswers } from "@/types"
+import { runPrompts } from "@/prompts"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const stackRoot = path.resolve(__dirname, "..")
@@ -40,7 +40,7 @@ export const main = async (): Promise<void> => {
   const s = spinner()
   s.start(`Generating project in ${cyan(answers.projectName)}...`)
 
-  let installFailed = false
+  let installFailed: boolean
   try {
     const result = await generateProject({
       stackRoot,
@@ -48,12 +48,13 @@ export const main = async (): Promise<void> => {
       projectName: answers.projectName,
       targetDir,
       buildMode: answers.buildMode,
+      architecture: answers.architecture,
       optionalFeatures: answers.features,
       install: answers.install,
       packageManager: answers.packageManager,
       quiet: true
     })
-    installFailed = result.installFailed || false
+    installFailed = result.installFailed ?? false
   } catch (err) {
     s.stop(yellow("Generation failed"))
     throw err
@@ -78,8 +79,7 @@ export const main = async (): Promise<void> => {
   const templateDocs = TEMPLATES[answers.templateName]?.docsUrl
   const docsLines = [
     templateDocs ? `Template guide: ${templateDocs}` : undefined,
-    "Stack & starters: https://aganov.dev/en/docs/about/projects/stack",
-    "Resume: https://aganov.dev/en/resume"
+    "Stack: https://aganov.dev/en/docs/about/projects/stack"
   ].filter((line): line is string => Boolean(line))
   note(docsLines.join("\n"), "Documentation")
 

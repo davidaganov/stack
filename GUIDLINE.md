@@ -1,7 +1,7 @@
 ## WebStack template maintenance guide (for humans + AI)
 
 This document explains **how templates are structured**, **how the generator works**, **how to update/create templates and features**, and the **common pitfalls**.  
-Goal: give an AI this file + a task, and it should make correct changes without breaking `.webstack` generation.
+Goal: give an AI this file + a task, and it should make correct changes without breaking generation.
 
 ---
 
@@ -13,23 +13,28 @@ Goal: give an AI this file + a task, and it should make correct changes without 
   - `vue-modern-template`
   - `vue-lynx-template`
   - `astro-clean-template`
+  - `nuxt-modern-template`
 
 Local DX: if `../vue-lynx-template` (etc.) exists next to `stack/`, the generator uses it as the source instead of cloning.
 
 ---
 
-## 1) Template repo layout: `.webstack/`
+## 1) Template repo layout (repo root = generator source)
 
-Each template repository contains `.webstack/`, which defines **layers**:
+Each template repository root **is** the generator source. It is **not** a runnable app checkout.
 
-- **`.webstack/template-empty/`**
+Layers at repo root:
+
+- **`template-empty/`** (or `template-empty-flat/` / `template-empty-layered/` for Nuxt)
   - Minimal runnable project.
   - No optional dependencies/imports/files that require a selected feature.
-- **`.webstack/features/demo-pages/`**
+- **`features/demo-pages/`** (or `demo-pages-flat` / `demo-pages-layered` for Nuxt)
   - Baseline for `recommended/custom` modes (pages, routing, components).
   - Must work **without** optional features (either static content or markers).
-- **`.webstack/features/<feature>/`**
-  - Optional modules: `i18n`, `pinia`, `tests`, `tailwind`, `platforms`, …
+- **`features/<feature>/`**
+  - Optional modules: `i18n`, `pinia`, `tests`, `tailwind`, …
+
+To smoke-test a layer, generate a project with `stack` into `.stack-gen/` and run `npm run dev` there.
 
 ---
 
@@ -43,10 +48,10 @@ Key places in `stack/`:
 
 Generation pipeline (essentials):
 
-1. Copy `.webstack/template-empty/` into the target project.
+1. Copy `template-empty/` (or architecture-specific empty) into the target project.
 2. Compute the feature list and its order (respecting `requires` and special rules like applying Tailwind last).
 3. For each feature:
-   - **Copy phase**: if `features/<name>/src/` exists, it is copied entirely into `target/src/`. Then paths from `copy` in `patch.json` are copied.
+   - **Copy phase**: paths from `copy` in `patch.json` are copied. A full `src/` / `app/` / `layers/` tree is copied **only** when `"copyContentRoot": true` (opt-in; most features use explicit `copy` + patches instead).
    - **Remove phase**: remove files listed in `remove` in `patch.json`.
 4. **Patch phase**: apply marker-based operations from `patches`.
 5. **package.json phase**: add `dependencies/devDependencies/scripts` from each feature’s `packageJson`.
@@ -56,11 +61,12 @@ Generation pipeline (essentials):
 
 ## 3) Feature contract: `patch.json`
 
-`.webstack/features/<feature>/patch.json` (typical contract):
+`features/<feature>/patch.json` (typical contract):
 
 - **`name`**: feature id (must match a `value` in `stack/src/config/templates.json`)
 - **`requires`**: list of features that must be applied earlier
-- **`copy`**: extra files/directories to copy (in addition to `src/`)
+- **`copy`**: extra files/directories to copy (always applied when listed)
+- **`copyContentRoot`**: when `true`, copy all of `features/<name>/src/` (or `app/` / `layers/` for Nuxt) before `copy` paths
 - **`remove`**: files to delete
 - **`patches`**: file edit operations
 - **`packageJson`**:
@@ -105,19 +111,21 @@ Marker matching is whitespace/newline tolerant, but the marker still needs to be
 
 ### Requirement
 
-Tests must live **only** under `src/__tests__/...`. No `*.test.ts` colocated with components.
+Tests must live **only** under `src/__tests__/...` (or `app/__tests__/` for Nuxt). No colocated test files next to components.
+
+Use **`*.spec.ts`** everywhere (not `*.test.ts`).
 
 ### Why this matters (and how duplicates happen)
 
-The feature engine automatically copies **all** of `features/<name>/src/` into the project.  
-So the `tests` feature must not contain `src/components/.../*.test.ts`, or they will end up in the output.
+The `tests` feature uses `"copyContentRoot": true` and owns the entire `__tests__/` tree.  
+Do not put specs in `demo-pages`, `i18n`, or other features — they would ship to every generated project that selects those features.
 
 ### Recommended safety in `vitest.config.ts`
 
 Narrow `include`:
 
 ```ts
-include: ["src/__tests__/**/*.test.ts"]
+include: ["src/__tests__/**/*.spec.ts"]
 ```
 
 ---
@@ -131,7 +139,11 @@ Goal: the baseline project does not depend on Tailwind, while the `tailwind` fea
 - `tailwind.css` import in `src/assets/styles/main.css`
 - dependencies in `package.json`
 
-Important: Tailwind should be applied **last** (see `tailwindLast()` in `stack/src/config/templates.ts`).
+Prefer **CSS + marker patches** (vue-lynx model) over copying a full `features/tailwind/src/` tree.
+
+Important: Tailwind should be applied **before** i18n/pinia content patches (see `featureOrder` in `templates.json`). Tailwind `replace-entire` on Vue files must keep `@webstack` markers so later features can patch them.
+
+Marker matching is whitespace/newline tolerant between HTML comment markers and placeholder text.
 
 ---
 
@@ -171,14 +183,14 @@ server: {
 
 ## 9) How to add a new template repo (step-by-step)
 
-1. Create a template repo with `.webstack` structure:
-   - `.webstack/template-empty/`
-   - `.webstack/features/demo-pages/`
-   - `.webstack/features/<feature>/`
+1. Create a template repo with generator source at root:
+   - `template-empty/`
+   - `features/demo-pages/`
+   - `features/<feature>/`
 2. Add an entry to `stack/src/config/templates.json`.
 3. Add special rules (if needed) in `stack/src/config/templates.ts`.
-4. (Optional) add a variant in `stack/scripts/generate-fixtures.mjs`.
-5. Verify end-to-end: `npx <path_to_stack>` → wizard → `npm run dev`.
+4. (Optional) add a fixture variant in `stack/src/config/fixtures.ts` (expanded per template in `expandVariantsForTemplate`).
+5. Verify end-to-end: `npx @davidaganov/stack` (or local `node ../stack/index.js`) → wizard → `npm run dev`.
 
 ---
 
@@ -186,7 +198,7 @@ server: {
 
 `stack/scripts/generate-fixtures.mjs` generates combinations under:
 
-`.stack-gen/<template-id>/<variant>/`
+`.stack-gen/<template-id>/<variant-id>/`
 
 This is a quick way to catch:
 
@@ -196,3 +208,5 @@ This is a quick way to catch:
 - dependency incompatibilities.
 
 Windows pitfall: if generation fails with `EBUSY`, a process is holding the folder (dev server, indexer, antivirus). Stop the process and regenerate.
+
+Fixture variants are defined in `stack/src/config/fixtures.ts` (`empty`, `full`, `config-*`, …). Run `npm run gen:all` or `npm run gen:<template>` to refresh `.stack-gen/`.
